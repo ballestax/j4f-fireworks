@@ -1,0 +1,9 @@
+# Salidas de compilacion
+build/
+dist/
+
+# Configuracion local de NetBeans
+nbproject/private/
+
+# Datos y modelos del entrenamiento offline (no viajan en la aplicacion)
+herramientas/datos/
