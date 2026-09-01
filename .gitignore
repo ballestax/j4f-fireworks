@@ -7,3 +7,4 @@ nbproject/private/
 
 # Datos y modelos del entrenamiento offline (no viajan en la aplicacion)
 herramientas/datos/
+herramientas/salida/
