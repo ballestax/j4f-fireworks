@@ -8,6 +8,8 @@ import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Synthesizer;
 import j4f.sonido.Salida;
 import j4f.sonido.SalidaSintetizador;
+import j4f.red.Improvisador;
+import j4f.red.RedImprovisador;
 
 /**
  * Musica de fondo generativa y percusion de apoyo para el espectaculo de
@@ -749,6 +751,22 @@ public class Musica {
      * receptor MIDI ni se abre; si falla, se cae a MIDI y no se nota.
      */
     private volatile Salida sintetizadorPropio;
+    /**
+     * Red que propone frases. Null si no hay pesos, y entonces manda
+     * generarMotivo() de siempre. Solo la toca el hilo generador.
+     */
+    private Improvisador improvisador;
+    private final float[] contextoRed = new float[RedImprovisador.CONTEXTO];
+    private int frasesDeRed;
+    private int frasesDeReglas;
+    /**
+     * Cuanta pirotecnia hay ahora mismo, de 0 a 1.
+     *
+     * Media movil alimentada por golpe(), que ya se llama desde el hilo de
+     * animacion en cada estallido. Es la unica via por la que el espectaculo
+     * entra en la musica; alimenta el condicionamiento de la red.
+     */
+    private volatile double energiaVisual;
     /** Solo se rellena si hubo que recurrir al sintetizador de respaldo. */
     private Synthesizer sintetizador;
 
@@ -863,6 +881,9 @@ public class Musica {
             }
             disponible = true;
             silenciada = false;
+            // Si no hay pesos, improvisador queda null y manda el generador
+            // de reglas. La aplicacion no se entera.
+            improvisador = Improvisador.crear();
             configurarCanales();
             ultimoGolpeNs = System.nanoTime() - 10000L * MS_A_NS;
             enMarcha = true;
@@ -1031,6 +1052,13 @@ public class Musica {
                 // un hueco hasta el siguiente cambio armonico. En el comping de
                 // jazz no se hace: son ataques cortos y volverian a sonar solos.
                 Ajustes a = ajustes;
+            // Decaimiento de la energia visual: sin estallidos vuelve a cero
+            // en unos pocos segundos.
+            double ev = energiaVisual;
+            if (ev > 0) {
+                ev -= PASO_MS / 3500.0;
+                energiaVisual = ev < 0 ? 0 : ev;
+            }
                 if (a.estiloArmonia == ARMONIA_SOSTENIDA) {
                     int[] acorde = acordeSonando;
                     for (int i = 0; i < acorde.length; i++) {
@@ -1081,6 +1109,14 @@ public class Musica {
         }
         notaPercusionB = segunda;
         finPercusionNs = ahora + GOLPE_DURACION_MS * MS_A_NS;
+
+        // Sube deprisa con cada estallido; el hilo generador la va bajando.
+        double e = energiaVisual + 0.16 * f;
+        energiaVisual = e > 1 ? 1 : e;
+    }
+
+    public double getEnergiaVisual() {
+        return energiaVisual;
     }
 
     // ------------------------------------------------------------------
@@ -1591,8 +1627,109 @@ public class Musica {
     // Motivos: inventar, recordar, variar y exponer
     // ------------------------------------------------------------------
 
-    /** Inventa una frase de 3 a 6 notas: contorno por grados y ritmo propio. */
+    /**
+     * Inventa una frase.
+     *
+     * Si hay red cargada, propone ella y las guardas armonicas la contienen;
+     * si no hay pesos, o si la frase no pasa el veto, decide el generador de
+     * reglas de siempre. Ese respaldo es lo que hace que la red nunca pueda
+     * dejar la musica peor de lo que ya estaba.
+     */
     private Motivo generarMotivo() {
+        if (improvisador != null) {
+            Motivo m = generarMotivoConRed();
+            if (m != null) {
+                frasesDeRed++;
+                return m;
+            }
+        }
+        frasesDeReglas++;
+        return generarMotivoConReglas();
+    }
+
+    /** Estadistica de cuanto manda la red frente a las reglas. */
+    public String reparteFrases() {
+        int total = frasesDeRed + frasesDeReglas;
+        if (total == 0) {
+            return "sin frases todavia";
+        }
+        return frasesDeRed + " de red y " + frasesDeReglas + " de reglas ("
+                + (100 * frasesDeRed / total) + "% red)";
+    }
+
+    private Motivo generarMotivoConRed() {
+        montarContexto();
+        int mascara = mascaraDelAcorde();
+        if (!improvisador.generar(contextoRed, mascara, modoActual)) {
+            return null;
+        }
+        int n = improvisador.getLongitud();
+        int[] grados = new int[n];
+        int[] duraciones = new int[n];
+        int[] huecos = new int[n];
+        System.arraycopy(improvisador.getGrados(), 0, grados, 0, n);
+        System.arraycopy(improvisador.getDuraciones(), 0, duraciones, 0, n);
+        System.arraycopy(improvisador.getHuecos(), 0, huecos, 0, n);
+        return new Motivo(grados, duraciones, huecos, n);
+    }
+
+    /** Notas del acorde actual como mascara de doce bits por clase de altura. */
+    private int mascaraDelAcorde() {
+        int[] intervalos = ajustes.tiposAcorde[tipoValido(ajustes)];
+        int mascara = 0;
+        int raiz = ((raizAcordeAbs - tonicaActual) % 12 + 12) % 12;
+        for (int i = 0; i < intervalos.length; i++) {
+            mascara |= 1 << ((raiz + intervalos[i]) % 12);
+        }
+        return mascara;
+    }
+
+    /**
+     * Monta el vector de condicionamiento con el estado que el motor ya
+     * tiene. Las dos mascaras de doce bits son lo mas valioso que lleva:
+     * permiten que la red aprenda comportamiento relativo al acorde y a la
+     * escala, que es lo que hace que doscientos mil parametros basten.
+     */
+    private void montarContexto() {
+        float[] c = contextoRed;
+        for (int i = 0; i < c.length; i++) {
+            c[i] = 0;
+        }
+        int p = 0;
+        Genero g = genero;
+        c[p + (g == Genero.CHILL ? 0 : g == Genero.JAZZ ? 1 : 2)] = 1;
+        p += 3;
+        c[p + limitar(seccionActual, 0, 4)] = 1;
+        p += 5;
+        c[p + limitar(tipoAcordeActual, 0, 7)] = 1;
+        p += 8;
+        c[p + (((raizAcordeAbs - tonicaActual) % 12 + 12) % 12)] = 1;
+        p += 12;
+        c[p + limitar(modoActual.length - 5, 0, 5)] = 1;
+        p += 6;
+        int mascaraAcorde = mascaraDelAcorde();
+        for (int i = 0; i < 12; i++) {
+            c[p + i] = ((mascaraAcorde >> i) & 1);
+        }
+        p += 12;
+        for (int i = 0; i < modoActual.length && i < 12; i++) {
+            c[p + (modoActual[i] % 12)] = 1;
+        }
+        p += 12;
+        c[p + (((indiceCorchea % 8) + 8) % 8)] = 1;
+        p += 8;
+        long ahora = System.nanoTime();
+        c[p] = (float) densidad(ahora);
+        c[p + 1] = desvioRegistro(ahora) / 12f;
+        c[p + 2] = desvioVelocidad(ahora) / 16f;
+        p += 3;
+        c[p] = limitar(reexposicion, 0, 8) / 8f;
+        c[p + 1] = ultimaDireccionMotivo;
+        p += 2;
+        c[p] = (float) energiaVisual;
+    }
+
+    private Motivo generarMotivoConReglas() {
         int n = Azar.entre(MOTIVO_MIN_NOTAS, MOTIVO_MAX_NOTAS);
         int[] grados = new int[n];
         int[] duraciones = new int[n];
