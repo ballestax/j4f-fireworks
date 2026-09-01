@@ -60,7 +60,7 @@ public class Musica {
 
     /** Generos disponibles. El nombre se muestra en pantalla tal cual. */
     public enum Genero {
-        CHILL, JAZZ, CLASICA, CARIBENA
+        CHILL, JAZZ, CLASICA, CARIBENA, GUITARRA, VIOLIN
     }
 
     /** Cacheado para no crear un array en cada llamada a siguienteGenero(). */
@@ -133,6 +133,14 @@ public class Musica {
     private static final int ARMONIA_COMPING = 1;
     /** Montuno: arpegio sincopado de dos manos alineado con la clave. */
     private static final int ARMONIA_MONTUNO = 2;
+    /** Rasgueo: el acorde no ataca en bloque, se desgrana cuerda a cuerda. */
+    private static final int ARMONIA_RASGUEO = 3;
+
+    /**
+     * Cuerdas de una postura de guitarra: cuantas notas como mucho desgrana
+     * un rasgueo. Mas de seis no tendria sentido fisico.
+     */
+    private static final int CUERDAS_RASGUEO = 6;
 
     /** Fundamental al cambiar de acorde y a veces a mitad. */
     private static final int BAJO_DISPERSO = 0;
@@ -873,6 +881,111 @@ public class Musica {
         return a;
     }
 
+    /**
+     * Guitarra sola.
+     *
+     * Todo el genero cabe en dos ideas: el acorde se desgrana en vez de
+     * atacar en bloque, y no hay nadie mas tocando. Sin percusion, sin
+     * contracanto y con la textura pulsando el arpegio, que es el
+     * fingerstyle. El modo frigio de alternativa da el color espanol sin
+     * comprometer el genero entero a el.
+     */
+    private static Ajustes ajustesGuitarra() {
+        Ajustes a = Ajustes.base();
+        a.programaPad = 24;       // guitarra de nailon
+        a.programaBajo = 24;      // sus propios bajos, no otro instrumento
+        a.programaMotivo = 24;
+        a.programaContra = 25;    // acero, para el contraste del contracanto
+        a.programaTextura = 24;
+        a.raizBase = 45;
+        a.octavaPad = 0;
+        a.octavaBajo = -12;
+        a.octavaMotivo = 12;
+        a.octavaTextura = 12;
+        a.escala = new int[]{0, 2, 3, 5, 7, 8, 10};        // menor natural
+        a.modosAlternativos = new int[][]{
+            {0, 2, 3, 5, 7, 8, 10},
+            {0, 1, 3, 5, 7, 8, 10}};                       // frigio: color espanol
+        a.tiposAcorde = new int[][]{{0, 3, 7}, {0, 4, 7}, {0, 3, 7, 10}};
+        a.progresion = new int[][]{{0, 0}, {8, 1}, {5, 0}, {7, 1}, {3, 1}, {0, 0}};
+        a.acordeMinMs = 4500;
+        a.acordeMaxMs = 7000;
+        a.solapeMs = 400;
+        a.estiloArmonia = ARMONIA_RASGUEO;
+        a.estiloBajo = BAJO_DISPERSO;
+        a.estiloContra = CONTRA_NINGUNO;
+        a.estiloTextura = TEXTURA_ARPEGIO;
+        a.varianteProgresion = VARIANTE_MODAL;
+        a.velPad = 50;
+        a.velBajo = 46;
+        a.velMotivo = 50;
+        a.velTextura = 38;
+        a.reverberacion = 74;
+        a.coro = 14;
+        a.usaPulso = true;
+        a.pulsoMs = 640;
+        a.unidadMs = 320;
+        a.bajoDuracionMs = 1400;
+        a.probBajoMedioAcorde = 0.35;
+        a.probSilencioTextura = 0.22;   // respira: no es una caja de musica
+        return a;
+    }
+
+    /**
+     * Violin con cuerdas.
+     *
+     * Aqui el trabajo pesado lo hacen el vibrato y el ligado de la Fase 1: sin
+     * ellos esto seria un organo con nombre de violin. Las notas son largas y
+     * el contracanto va en violonchelo por movimiento contrario.
+     */
+    private static Ajustes ajustesViolin() {
+        Ajustes a = Ajustes.base();
+        a.programaPad = 49;       // cuerdas en conjunto
+        a.programaBajo = 43;      // contrabajo
+        a.programaMotivo = 40;    // violin
+        a.programaContra = 42;    // violonchelo
+        a.programaTextura = 46;   // arpa
+        a.raizBase = 48;
+        a.octavaPad = 0;
+        a.octavaBajo = -12;
+        a.octavaMotivo = 24;
+        a.octavaContra = -5;
+        a.octavaTextura = 12;
+        a.escala = new int[]{0, 2, 4, 5, 7, 9, 11};
+        a.modosAlternativos = new int[][]{
+            {0, 2, 4, 5, 7, 9, 11},
+            {0, 2, 3, 5, 7, 8, 10}};
+        a.tiposAcorde = new int[][]{{0, 4, 7}, {0, 3, 7}, {0, 5, 7}};
+        a.progresion = new int[][]{{0, 0}, {9, 1}, {5, 0}, {2, 1}, {7, 0}, {0, 0}};
+        a.acordeMinMs = 5000;
+        a.acordeMaxMs = 8000;
+        a.solapeMs = 2000;        // las cuerdas se solapan, no se cortan
+        a.estiloArmonia = ARMONIA_SOSTENIDA;
+        a.estiloBajo = BAJO_SOSTENIDO;
+        a.estiloContra = CONTRA_LINEA;
+        a.estiloTextura = TEXTURA_ARPEGIO;
+        a.varianteProgresion = VARIANTE_PRESTADO;
+        a.velPad = 42;
+        a.velBajo = 40;
+        a.velMotivo = 52;
+        a.velContra = 40;
+        a.velTextura = 32;
+        a.reverberacion = 108;    // sala grande: es donde vive una cuerda
+        a.coro = 34;
+        a.usaPulso = true;
+        a.pulsoMs = 840;
+        a.unidadMs = 520;         // notas largas: el arco no corre
+        a.probBajoMedioAcorde = 0.20;
+        a.probSilencioTextura = 0.14;
+        a.usaSuspension = true;
+        a.probSuspension = 0.40;
+        a.fraccionSuspension = 0.45;
+        a.tipoSus4 = 2;
+        return a;
+    }
+
+    private static final Ajustes AJUSTES_GUITARRA = ajustesGuitarra();
+    private static final Ajustes AJUSTES_VIOLIN = ajustesViolin();
     private static final Ajustes AJUSTES_CARIBENA = ajustesCaribena();
     private static final Ajustes AJUSTES_CHILL = ajustesChill();
     private static final Ajustes AJUSTES_JAZZ = ajustesJazz();
@@ -899,6 +1012,10 @@ public class Musica {
                 return AJUSTES_CLASICA;
             case CARIBENA:
                 return AJUSTES_CARIBENA;
+            case GUITARRA:
+                return AJUSTES_GUITARRA;
+            case VIOLIN:
+                return AJUSTES_VIOLIN;
             default:
                 // Genero anadido al enum sin su fabrica. Suena a chill, pero
                 // deja rastro en vez de disimularlo.
@@ -941,6 +1058,13 @@ public class Musica {
     private final AgenteMusical agente = new AgenteMusical();
     /** Notas emitidas en la seccion, para medirle el resultado al agente. */
     private int notasDeSeccion;
+
+    // Rasgueo pendiente: las cuerdas se emiten de una en una por vuelta del
+    // bucle, que es lo que separa una guitarra de un organo.
+    private int[] rasgueoNotas;
+    private int rasgueoIndice;
+    private int rasgueoVelocidad;
+    private int rasgueoDuracionMs;
     /** Solo se rellena si hubo que recurrir al sintetizador de respaldo. */
     private Synthesizer sintetizador;
 
@@ -2484,7 +2608,13 @@ public class Musica {
         }
         calcularAlteraciones(intervalos);
 
-        if (a.estiloArmonia == ARMONIA_SOSTENIDA) {
+        if (a.estiloArmonia == ARMONIA_RASGUEO) {
+            // Nada suena aqui: se deja preparado y lo desgrana el bucle.
+            acordeSonando = new int[0];
+            notasPadPrevias = conducirVoces(intervalos, basePad, notasPadPrevias);
+            prepararRasgueo(notasPadPrevias, a.velPad + desvioVelocidad(ahoraNs),
+                    (int) (duracion * 0.9), Azar.probabilidad(0.72));
+        } else if (a.estiloArmonia == ARMONIA_SOSTENIDA) {
             tocarAcordeConducido(a, intervalos, basePad, duracion, ahoraNs);
         } else {
             // El comping no sostiene nada: los ataques van por la rejilla.
@@ -2619,6 +2749,48 @@ public class Musica {
         notaOn(CANAL_BAJO, nota, velocidadHumana(a.velBajo + desvioVelocidad(ahoraNs)),
                 dur, ahoraNs);
         notaBajoActual = nota;
+    }
+
+    /**
+     * Prepara un rasgueo: guarda el acorde para desgranarlo cuerda a cuerda.
+     *
+     * No se puede atacar y ya esta: lo que distingue a una guitarra de un
+     * organo es que las cuerdas no suenan a la vez. El motor sondea cada
+     * 25 ms, que resulta ser justo el extremo rapido de un rasgueo de verdad
+     * (los rapidos van sobre 30 ms por cuerda), asi que se emite una cuerda
+     * por vuelta del bucle en vez de intentar un retardo mas fino que la
+     * rejilla no puede dar.
+     *
+     * @param arriba true de grave a agudo, que es el golpe hacia abajo.
+     */
+    private void prepararRasgueo(int[] voces, int velocidad, int duracionMs,
+            boolean arriba) {
+        int n = Math.min(voces.length, CUERDAS_RASGUEO);
+        if (n <= 0) {
+            return;
+        }
+        rasgueoNotas = new int[n];
+        for (int i = 0; i < n; i++) {
+            rasgueoNotas[i] = arriba ? voces[i] : voces[n - 1 - i];
+        }
+        rasgueoIndice = 0;
+        rasgueoVelocidad = velocidad;
+        rasgueoDuracionMs = duracionMs;
+    }
+
+    /** Emite la siguiente cuerda del rasgueo pendiente, si la hay. */
+    private void avanzarRasgueo(long ahoraNs) {
+        if (rasgueoNotas == null || rasgueoIndice >= rasgueoNotas.length) {
+            return;
+        }
+        // Las cuerdas graves del golpe pegan algo mas fuerte.
+        int vel = rasgueoVelocidad - rasgueoIndice;
+        notaOn(CANAL_PAD, rasgueoNotas[rasgueoIndice],
+                velocidadHumana(Math.max(1, vel)), rasgueoDuracionMs, ahoraNs);
+        rasgueoIndice++;
+        if (rasgueoIndice >= rasgueoNotas.length) {
+            rasgueoNotas = null;
+        }
     }
 
     /** Semitonos de la fundamental del acorde respecto de la tonica. */
@@ -2971,6 +3143,9 @@ public class Musica {
                         energiaVisual = ev < 0 ? 0 : ev;
                     }
                     if (disponible) {
+                        // Una cuerda por vuelta: a 25 ms de sondeo sale un
+                        // rasgueo de los rapidos, que es lo que se busca.
+                        avanzarRasgueo(ahora);
                         apagarVencidas(ahora);
                         cerrarPercusionVencida(ahora);
                         actualizarExpresion(a, ahora);
