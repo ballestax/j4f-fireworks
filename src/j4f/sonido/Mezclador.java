@@ -28,6 +28,8 @@ public final class Mezclador {
 
     private final BancoRuido ruido;
     private final Reverberacion reverberacion;
+    private final Coro coro;
+    private final Saturacion saturacion;
     private final Limitador limitador;
 
     private final float[] izq;
@@ -44,6 +46,8 @@ public final class Mezclador {
         this.cola = cola;
         this.ruido = new BancoRuido(frecMuestreo, 0x5DEECE66DL);
         this.reverberacion = new Reverberacion(frecMuestreo);
+        this.coro = new Coro(frecMuestreo);
+        this.saturacion = new Saturacion();
         this.limitador = new Limitador(frecMuestreo);
         this.izq = new float[maxBloque];
         this.der = new float[maxBloque];
@@ -62,6 +66,8 @@ public final class Mezclador {
             volumenCapa[i] = 1f;
         }
         reverberacion.ajustar(0.72, 0.35, 0.30);
+        coro.ajustar(0.20, 0.15);
+        saturacion.ajustar(1.35, 1.25);
         limitador.ajustar(0.92, 90);
     }
 
@@ -93,6 +99,14 @@ public final class Mezclador {
         return robadas;
     }
 
+    /** Ajustes de la cadena de efectos, para poder afinarla en caliente. */
+    public void ajustarEfectos(double revTamano, double revMezcla,
+            double coroMezcla, double empuje, double anchura) {
+        reverberacion.ajustar(revTamano, 0.35, revMezcla);
+        coro.ajustar(coroMezcla, 0.15);
+        saturacion.ajustar(empuje, anchura);
+    }
+
     /** Renderiza un bloque entero en las mezclas y lo entrega intercalado. */
     public void render(float[] salidaIzq, float[] salidaDer, int n, long ahoraNs) {
         atenderEventos(ahoraNs);
@@ -117,11 +131,17 @@ public final class Mezclador {
         }
 
         reverberacion.procesar(envIzq, envDer, n);
+
+        // Cadena del bus: suma, coro, saturacion con anchura y limitador.
+        // La saturacion va antes del limitador a proposito: redondea los
+        // picos para que este tenga que actuar menos y no se le oiga.
         float g = volumenGeneral * GANANCIA_MAESTRA;
         for (int i = 0; i < n; i++) {
             salidaIzq[i] = (izq[i] + envIzq[i]) * g;
             salidaDer[i] = (der[i] + envDer[i]) * g;
         }
+        coro.procesar(salidaIzq, salidaDer, n);
+        saturacion.procesar(salidaIzq, salidaDer, n);
         limitador.procesar(salidaIzq, salidaDer, n);
     }
 
