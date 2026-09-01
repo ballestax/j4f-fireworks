@@ -10,6 +10,7 @@ import j4f.sonido.Salida;
 import j4f.sonido.SalidaSintetizador;
 import j4f.red.Improvisador;
 import j4f.red.RedImprovisador;
+import j4f.red.AgenteMusical;
 
 /**
  * Musica de fondo generativa y percusion de apoyo para el espectaculo de
@@ -767,6 +768,10 @@ public class Musica {
      * entra en la musica; alimenta el condicionamiento de la red.
      */
     private volatile double energiaVisual;
+    /** Politica que decide la forma de la pieza. Solo la toca el generador. */
+    private final AgenteMusical agente = new AgenteMusical();
+    /** Notas emitidas en la seccion, para medirle el resultado al agente. */
+    private int notasDeSeccion;
     /** Solo se rellena si hubo que recurrir al sintetizador de respaldo. */
     private Synthesizer sintetizador;
 
@@ -967,6 +972,9 @@ public class Musica {
             genero = g;
             ajustes = ajustesDe(g);
             cambioPendiente = true;
+            // El agente vuelve al prior: lo aprendido con un genero no tiene
+            // por que valer para otro, y arrastrarlo lo dejaria descolocado.
+            agente.reiniciar();
             if (!disponible) {
                 return;
             }
@@ -1052,13 +1060,6 @@ public class Musica {
                 // un hueco hasta el siguiente cambio armonico. En el comping de
                 // jazz no se hace: son ataques cortos y volverian a sonar solos.
                 Ajustes a = ajustes;
-            // Decaimiento de la energia visual: sin estallidos vuelve a cero
-            // en unos pocos segundos.
-            double ev = energiaVisual;
-            if (ev > 0) {
-                ev -= PASO_MS / 3500.0;
-                energiaVisual = ev < 0 ? 0 : ev;
-            }
                 if (a.estiloArmonia == ARMONIA_SOSTENIDA) {
                     int[] acorde = acordeSonando;
                     for (int i = 0; i < acorde.length; i++) {
@@ -1359,6 +1360,7 @@ public class Musica {
         vozCanal[libre] = canal;
         vozFinNs[libre] = ahoraNs + (long) duracionMs * MS_A_NS;
         vozActiva[libre] = true;
+        notasDeSeccion++;
         enviar(ShortMessage.NOTE_ON, canal, nota, limitar(velocidad, 1, 127));
     }
 
@@ -1589,6 +1591,10 @@ public class Musica {
      * asi que el corte cae siempre en una junta de la armonia.
      */
     private void avanzarSeccion(Ajustes a, long ahoraNs) {
+        // Cierra el lazo de la seccion que termina: cuanta musica hubo frente
+        // a cuanta pirotecnia pedia la pantalla.
+        cerrarSeccionAnteAgente(ahoraNs);
+
         indiceSecuencia++;
         if (indiceSecuencia >= SECUENCIA.length) {
             // Al dar la vuelta se salta el INTRO: solo se oye al principio.
@@ -1600,13 +1606,41 @@ public class Musica {
         inicioSeccionNs = ahoraNs;
         finSeccionNs = ahoraNs + (long) Azar.entre(s.duracionMinMs, s.duracionMaxMs) * MS_A_NS;
         seccionesTocadas++;
+        notasDeSeccion = 0;
+
+        agente.observar(energiaVisual, densidad(ahoraNs),
+                (double) indiceSecuencia / SECUENCIA.length);
 
         // Cada pocas secciones se plantea una modulacion a un tono vecino.
-        if (seccionesTocadas % SECCIONES_POR_MODULACION == 0 && Azar.probabilidad(PROB_MODULACION)) {
+        if (seccionesTocadas % SECCIONES_POR_MODULACION == 0
+                && Azar.probabilidad(agente.ajustar(AgenteMusical.MODULAR, PROB_MODULACION))) {
             modular(a);
         }
         // Material nuevo para la seccion: motivo inventado o recordado.
         prepararMotivoDeSeccion(a);
+    }
+
+    /**
+     * Le pasa al agente el resultado de la seccion que acaba.
+     *
+     * La actividad se mide en notas por segundo normalizadas; la recompensa es
+     * alta cuando la musica acompaña a lo que estaba pasando en pantalla.
+     */
+    private void cerrarSeccionAnteAgente(long ahoraNs) {
+        if (seccionesTocadas == 0) {
+            return;
+        }
+        double segundos = (ahoraNs - inicioSeccionNs) / 1e9;
+        if (segundos < 1) {
+            return;
+        }
+        // Diez notas por segundo se considera actividad plena.
+        double actividad = (notasDeSeccion / segundos) / 10.0;
+        agente.recompensar(energiaVisual, actividad);
+    }
+
+    public String estadoAgente() {
+        return agente.estado();
     }
 
     /** Modula a un tono vecino sin alejarse demasiado de la tonalidad original. */
@@ -1767,7 +1801,8 @@ public class Musica {
      * sucesion de ideas sueltas.
      */
     private void prepararMotivoDeSeccion(Ajustes a) {
-        if (memoriaUsada > 0 && Azar.probabilidad(PROB_RECORDAR_MOTIVO)) {
+        if (memoriaUsada > 0
+                && Azar.probabilidad(agente.ajustar(AgenteMusical.RECORDAR, PROB_RECORDAR_MOTIVO))) {
             motivoSeccion = memoriaMotivos[Azar.entre(0, memoriaUsada - 1)];
         } else {
             motivoSeccion = generarMotivo();
@@ -2611,6 +2646,13 @@ public class Musica {
                         reiniciarEstadoMusical(ahora);
                     }
                     Ajustes a = ajustes;
+                    // Decaimiento de la energia visual: sin estallidos vuelve
+                    // a cero en unos tres segundos y medio.
+                    double ev = energiaVisual;
+                    if (ev > 0) {
+                        ev -= PASO_MS / 3500.0;
+                        energiaVisual = ev < 0 ? 0 : ev;
+                    }
                     if (disponible) {
                         apagarVencidas(ahora);
                         cerrarPercusionVencida(ahora);

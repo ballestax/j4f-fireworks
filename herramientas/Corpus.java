@@ -426,6 +426,21 @@ public final class Corpus {
         return c;
     }
 
+    /**
+     * Lee el contexto y dice si ese grado cae sobre una nota del acorde.
+     * Sirve para comprobar que la red usa de verdad el condicionamiento.
+     */
+    public static boolean esNotaDeAcorde(float[] ctx, int grado) {
+        int modo = 0;
+        for (int i = 1; i < 6; i++) {
+            if (ctx[28 + i] > ctx[28 + modo]) {
+                modo = i;
+            }
+        }
+        int altura = alturaDe(grado, MODOS[modo]);
+        return ctx[34 + altura] > 0.5f;
+    }
+
     /** Contexto de ejemplo, reproducible, para las pruebas doradas. */
     public static float[] contextoDeMuestra(int indice) {
         Random r = new Random(9000 + indice);

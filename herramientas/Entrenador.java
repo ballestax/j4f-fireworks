@@ -50,15 +50,15 @@ public final class Entrenador {
         // --- Comprobacion numerica del gradiente ---
         comprobarGradiente(modelo);
 
-        // --- Corpus ---
+        // --- Corpus de muestra, solo para estadisticas y pruebas ---
         long t0 = System.currentTimeMillis();
         Corpus.Frase[] corpus = Corpus.generar(nFrases, 12345L);
         System.out.println("corpus generado : " + corpus.length + " frases en "
                 + (System.currentTimeMillis() - t0) + " ms");
         estadisticasCorpus(corpus);
 
-        // --- Entrenamiento ---
-        entrenar(modelo, corpus, epocas);
+        // --- Entrenamiento sobre corpus fresco en cada epoca ---
+        entrenar(modelo, nFrases, epocas);
 
         // --- Evaluacion final ---
         Corpus.Frase[] validacion = Corpus.generar(4000, 987654L);
@@ -101,8 +101,8 @@ public final class Entrenador {
     // ------------------------------------------------------------------
     // Entrenamiento
     // ------------------------------------------------------------------
-    private static void entrenar(final Modelo modelo, final Corpus.Frase[] corpus,
-            int epocas) throws Exception {
+    private static void entrenar(final Modelo modelo, int nFrases, int epocas)
+            throws Exception {
         int hilos = Math.min(16, Runtime.getRuntime().availableProcessors());
         System.out.println("hilos           : " + hilos);
         ExecutorService pool = Executors.newFixedThreadPool(hilos);
@@ -110,24 +110,16 @@ public final class Entrenador {
         for (int i = 0; i < hilos; i++) {
             estados[i] = new Modelo.Estado();
         }
-        int[] orden = new int[corpus.length];
-        for (int i = 0; i < orden.length; i++) {
-            orden[i] = i;
-        }
-        Random rnd = new Random(777);
-        int lotesTotales = epocas * ((corpus.length + LOTE - 1) / LOTE);
+        int lotesTotales = epocas * ((nFrases + LOTE - 1) / LOTE);
         int loteGlobal = 0;
 
         System.out.println();
+        System.out.println("Cada epoca ve frases nuevas, asi que la perdida de la");
+        System.out.println("tabla ya es perdida sobre datos no vistos.");
+        System.out.println();
         System.out.println("epoca  perdida  perplejidad   lr      norma_grad  seg");
         for (int ep = 0; ep < epocas; ep++) {
-            // Barajado de Fisher-Yates.
-            for (int i = orden.length - 1; i > 0; i--) {
-                int j = rnd.nextInt(i + 1);
-                int t = orden[i];
-                orden[i] = orden[j];
-                orden[j] = t;
-            }
+            final Corpus.Frase[] corpus = Corpus.generar(nFrases, 1000L + ep * 7919L);
             boolean cuantizada = ep >= epocas - EPOCAS_CUANTIZADAS;
             long te = System.currentTimeMillis();
             double sumaPerdida = 0;
@@ -139,7 +131,6 @@ public final class Entrenador {
                 final int desde = inicio;
                 modelo.copiarPesos(cuantizada);
                 final float[][] w = modelo.w;
-                final int[] ord = orden;
                 List<Callable<Object>> tareas = new ArrayList<Callable<Object>>();
                 int total = fin - desde;
                 int porHilo = (total + hilos - 1) / hilos;
@@ -154,7 +145,7 @@ public final class Entrenador {
                     tareas.add(new Callable<Object>() {
                         public Object call() {
                             for (int k = a; k < b; k++) {
-                                Corpus.Frase f = corpus[ord[k]];
+                                Corpus.Frase f = corpus[k];
                                 modelo.fraseAdelanteAtras(w, f.fichas, f.contexto, e);
                             }
                             return null;
@@ -358,7 +349,7 @@ public final class Entrenador {
     // ------------------------------------------------------------------
     private static void pruebaDorada(Modelo mo, RedImprovisador red,
             Corpus.Frase[] corpus) {
-        int casos = 8;
+        int casos = 24;
         System.out.println();
         System.out.println("== Prueba dorada (logits del entrenador vs RedImprovisador) ==");
 
@@ -366,7 +357,7 @@ public final class Entrenador {
             boolean simulandoInt8 = (ronda == 1);
             mo.copiarPesos(simulandoInt8);
             Modelo.Estado e = new Modelo.Estado();
-            double maxAbs = 0;
+            double maxAbs = 0, sumaAbs = 0, peorEmpate = -1;
             long comparados = 0, argmaxIgual = 0, vectores = 0;
             double sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
 
@@ -387,6 +378,7 @@ public final class Entrenador {
                         if (d > maxAbs) {
                             maxAbs = d;
                         }
+                        sumaAbs += d;
                         sx += a;
                         sy += b;
                         sxx += a * a;
@@ -403,6 +395,12 @@ public final class Entrenador {
                     vectores++;
                     if (amR == amM) {
                         argmaxIgual++;
+                    } else {
+                        // Un desacuerdo solo importa si no es un empate tecnico.
+                        double hueco = Math.abs(lr[amR] - lr[amM]);
+                        if (peorEmpate < 0 || hueco > peorEmpate) {
+                            peorEmpate = hueco;
+                        }
                     }
                 }
             }
@@ -411,12 +409,18 @@ public final class Entrenador {
             double vx = sxx / n - (sx / n) * (sx / n);
             double vy = syy / n - (sy / n) * (sy / n);
             double corr = cov / Math.sqrt(vx * vy);
+            System.out.println("  " + (simulandoInt8
+                    ? "int8 simulado en el entrenador vs fichero cargado:"
+                    : "flotante del entrenador vs fichero cargado (coste real del int8):"));
             System.out.println(String.format(
-                    "  %-28s max|dif| = %.6f   corr = %.8f   argmax igual = %d/%d",
-                    simulandoInt8 ? "int8 simulado vs fichero" : "flotante vs fichero",
-                    maxAbs, corr, argmaxIgual, vectores));
+                    "    max|dif| = %.6f   media|dif| = %.6f   corr = %.8f",
+                    maxAbs, sumaAbs / n, corr));
             System.out.println(String.format(
-                    "  %-28s logits comparados = %d", "", comparados));
+                    "    argmax igual = %d/%d   logits comparados = %d%s",
+                    argmaxIgual, vectores, comparados,
+                    peorEmpate < 0 ? ""
+                            : String.format("   (mayor hueco top-1 en desacuerdo: %.6f)",
+                                    peorEmpate)));
         }
         mo.copiarPesos(false);
     }
@@ -464,6 +468,66 @@ public final class Entrenador {
         System.out.println(String.format(
                 "  terminan en FICHA_FIN: %d/%d   largo medio: %.2f   grados fuera de rango: %d",
                 terminadas, cuantas, sumaLargo / (double) cuantas, fueraDeRango));
+        condicionamiento(red, 600);
+    }
+
+    /**
+     * Comprueba que la red usa el contexto: si lo ignorase, la primera y la
+     * ultima nota caerian sobre el acorde solo por azar.
+     */
+    private static void condicionamiento(RedImprovisador red, int cuantas) {
+        Random rnd = new Random(555);
+        float[] probs = new float[RedImprovisador.VOCABULARIO];
+        int conPrimera = 0, conUltima = 0, validas = 0, azarPrimera = 0;
+        int sumaLargo = 0, terminadas = 0;
+        for (int c = 0; c < cuantas; c++) {
+            float[] ctx = Corpus.contextoDeMuestra(c);
+            red.reiniciar();
+            int ficha = -1, n = 0, primera = 0, ultima = 0;
+            boolean fin = false;
+            for (int paso = 0; paso < 16; paso++) {
+                int elegida = muestrearFicha(red.paso(ficha, ctx), probs, rnd, 0.85);
+                if (elegida == RedImprovisador.FICHA_FIN) {
+                    fin = true;
+                    break;
+                }
+                int g = RedImprovisador.gradoDe(elegida);
+                if (n == 0) {
+                    primera = g;
+                }
+                ultima = g;
+                ficha = elegida;
+                n++;
+            }
+            if (n == 0) {
+                continue;
+            }
+            if (fin) {
+                terminadas++;
+            }
+            sumaLargo += n;
+            validas++;
+            if (Corpus.esNotaDeAcorde(ctx, primera)) {
+                conPrimera++;
+            }
+            if (Corpus.esNotaDeAcorde(ctx, ultima)) {
+                conUltima++;
+            }
+            // Linea base: el mismo grado juzgado con el acorde de otro contexto.
+            if (Corpus.esNotaDeAcorde(Corpus.contextoDeMuestra(c + 1), primera)) {
+                azarPrimera++;
+            }
+        }
+        System.out.println();
+        System.out.println("== Uso del contexto (" + validas + " frases muestreadas) ==");
+        System.out.println(String.format(
+                "  primera nota sobre el acorde : %.1f%%   (linea base con otro acorde: %.1f%%)",
+                100.0 * conPrimera / validas, 100.0 * azarPrimera / validas));
+        System.out.println(String.format(
+                "  ultima nota sobre el acorde  : %.1f%%", 100.0 * conUltima / validas));
+        System.out.println(String.format(
+                "  terminan en FICHA_FIN        : %.1f%%   largo medio %.2f",
+                100.0 * terminadas / validas, sumaLargo / (double) validas));
     }
 
     private static int muestrearFicha(float[] logits, float[] probs, Random rnd, double temp) {
