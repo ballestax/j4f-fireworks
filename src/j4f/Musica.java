@@ -6,6 +6,8 @@ import javax.sound.midi.MidiUnavailableException;
 import javax.sound.midi.Receiver;
 import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Synthesizer;
+import j4f.sonido.Salida;
+import j4f.sonido.SalidaSintetizador;
 
 /**
  * Musica de fondo generativa y percusion de apoyo para el espectaculo de
@@ -508,6 +510,8 @@ public class Musica {
     private static final int GOLPE_DURACION_MS = 260;
 
     /** Rebanada de sueno del hilo generador: define lo rapido que reacciona. */
+    /** Si el motor propio manda sobre MIDI. Se puede conmutar en caliente. */
+    private static final boolean USAR_SINTETIZADOR_PROPIO = true;
     private static final int PASO_MS = 25;
     /** Voces simultaneas con apagado programado: cinco capas piden sitio. */
     private static final int MAX_VOCES = 48;
@@ -740,6 +744,11 @@ public class Musica {
     private final Object cerrojoMidi = new Object();
 
     private volatile Receiver receptor;
+    /**
+     * Sintetizador propio. Cuando esta abierto se lleva todo el sonido y el
+     * receptor MIDI ni se abre; si falla, se cae a MIDI y no se nota.
+     */
+    private volatile Salida sintetizadorPropio;
     /** Solo se rellena si hubo que recurrir al sintetizador de respaldo. */
     private Synthesizer sintetizador;
 
@@ -896,6 +905,15 @@ public class Musica {
     }
 
     /** @return true si hay salida MIDI abierta y sonando. */
+    /** Nombre del motor de sonido en uso, para mostrarlo en pantalla. */
+    public String nombreSalida() {
+        Salida propio = sintetizadorPropio;
+        if (propio != null) {
+            return propio.nombre();
+        }
+        return receptor != null ? "MIDI del sistema" : "sin audio";
+    }
+
     public boolean estaDisponible() {
         return disponible;
     }
@@ -1075,6 +1093,20 @@ public class Musica {
      * falla, el sintetizador software del JDK.
      */
     private boolean abrirSalida() {
+        // Primero el motor propio: el sintetizador GS de Windows tiene un
+        // banco de 3,4 MB y es el techo de calidad que se quiere superar.
+        if (USAR_SINTETIZADOR_PROPIO && Runtime.getRuntime().availableProcessors() >= 3) {
+            try {
+                Salida s = new SalidaSintetizador();
+                if (s.abrir()) {
+                    sintetizadorPropio = s;
+                    return true;
+                }
+            } catch (Throwable t) {
+                // Sin audio PCM utilizable: sigue por MIDI.
+                sintetizadorPropio = null;
+            }
+        }
         try {
             Receiver r = MidiSystem.getReceiver();
             if (r != null) {
@@ -1109,6 +1141,15 @@ public class Musica {
     }
 
     private void cerrarSalida() {
+        Salida propio = sintetizadorPropio;
+        sintetizadorPropio = null;
+        if (propio != null) {
+            try {
+                propio.cerrar();
+            } catch (Exception e) {
+                // Cerrando: nada que hacer.
+            }
+        }
         Receiver r = receptor;
         receptor = null;
         if (r != null) {
@@ -1214,6 +1255,11 @@ public class Musica {
 
     /** Unico punto de envio. Nunca propaga excepciones. */
     private void enviar(int comando, int canal, int dato1, int dato2) {
+        Salida propio = sintetizadorPropio;
+        if (propio != null) {
+            propio.enviar(comando, canal, limitar(dato1, 0, 127), limitar(dato2, 0, 127));
+            return;
+        }
         Receiver r = receptor;
         if (r == null) {
             return;

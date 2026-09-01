@@ -1,0 +1,192 @@
+package j4f.sonido;
+
+/**
+ * Reparte los eventos entre las voces y suma la mezcla del bloque.
+ *
+ * Vive entero en el hilo de audio. Todo esta preasignado: en render() no se
+ * crea ni un objeto.
+ *
+ * @author ballestas
+ */
+public final class Mezclador {
+
+    public static final int CAPAS = 6;
+    private static final int VOCES = 24;
+    /**
+     * Ganancia de compensacion de la mezcla.
+     *
+     * Las recetas normalizan sus armonicos y la velocidad entra al cuadrado,
+     * asi que la suma de voces se queda muy por debajo de fondo de escala. Sin
+     * esto la salida medida daba un pico de 0,058, unos veinticinco decibelios
+     * por debajo de donde deberia. El limitador se encarga de los picos.
+     */
+    private static final float GANANCIA_MAESTRA = 11f;
+
+    private final Voz[] voces = new Voz[VOCES];
+    private final Instrumento[] instrumentos = new Instrumento[CAPAS];
+    private final float[] volumenCapa = new float[CAPAS];
+
+    private final BancoRuido ruido;
+    private final Reverberacion reverberacion;
+    private final Limitador limitador;
+
+    private final float[] izq;
+    private final float[] der;
+    private final float[] envIzq;
+    private final float[] envDer;
+
+    private final ColaEventos cola;
+    private volatile int generacionValida;
+    private volatile float volumenGeneral = 1f;
+    private int robadas;
+
+    public Mezclador(double frecMuestreo, int maxBloque, ColaEventos cola) {
+        this.cola = cola;
+        this.ruido = new BancoRuido(frecMuestreo, 0x5DEECE66DL);
+        this.reverberacion = new Reverberacion(frecMuestreo);
+        this.limitador = new Limitador(frecMuestreo);
+        this.izq = new float[maxBloque];
+        this.der = new float[maxBloque];
+        this.envIzq = new float[maxBloque];
+        this.envDer = new float[maxBloque];
+        for (int i = 0; i < VOCES; i++) {
+            voces[i] = new Voz(frecMuestreo);
+        }
+        instrumentos[0] = Instrumento.pad();
+        instrumentos[1] = Instrumento.bajo();
+        instrumentos[2] = Instrumento.motivo();
+        instrumentos[3] = Instrumento.contra();
+        instrumentos[4] = Instrumento.textura();
+        instrumentos[5] = Instrumento.percusion();
+        for (int i = 0; i < CAPAS; i++) {
+            volumenCapa[i] = 1f;
+        }
+        reverberacion.ajustar(0.72, 0.35, 0.30);
+        limitador.ajustar(0.92, 90);
+    }
+
+    public void setGeneracion(int g) {
+        generacionValida = g;
+    }
+
+    public void setVolumenGeneral(float v) {
+        volumenGeneral = v < 0 ? 0 : (v > 1 ? 1 : v);
+    }
+
+    public void setVolumenCapa(int capa, float v) {
+        if (capa >= 0 && capa < CAPAS) {
+            volumenCapa[capa] = v;
+        }
+    }
+
+    public int vocesActivas() {
+        int n = 0;
+        for (int i = 0; i < VOCES; i++) {
+            if (voces[i].sonando()) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    public int getRobadas() {
+        return robadas;
+    }
+
+    /** Renderiza un bloque entero en las mezclas y lo entrega intercalado. */
+    public void render(float[] salidaIzq, float[] salidaDer, int n, long ahoraNs) {
+        atenderEventos(ahoraNs);
+
+        for (int i = 0; i < n; i++) {
+            izq[i] = 0;
+            der[i] = 0;
+            envIzq[i] = 0;
+            envDer[i] = 0;
+        }
+        ruido.procesar(n);
+
+        for (int v = 0; v < VOCES; v++) {
+            Voz voz = voces[v];
+            if (voz.enUso()) {
+                // Nota con duracion cumplida: se suelta, no se corta.
+                if (voz.getFinNs() != 0 && ahoraNs - voz.getFinNs() >= 0) {
+                    voz.soltar();
+                }
+                voz.render(izq, der, envIzq, envDer, n, ruido);
+            }
+        }
+
+        reverberacion.procesar(envIzq, envDer, n);
+        float g = volumenGeneral * GANANCIA_MAESTRA;
+        for (int i = 0; i < n; i++) {
+            salidaIzq[i] = (izq[i] + envIzq[i]) * g;
+            salidaDer[i] = (der[i] + envDer[i]) * g;
+        }
+        limitador.procesar(salidaIzq, salidaDer, n);
+    }
+
+    private void atenderEventos(long ahoraNs) {
+        int gen = generacionValida;
+        for (;;) {
+            int i = cola.siguiente();
+            if (i < 0) {
+                return;
+            }
+            // Obsoleto tras un cambio de genero o un silencio: se descarta.
+            if (cola.getGeneracion(i) != gen) {
+                cola.avanzar();
+                continue;
+            }
+            int tipo = cola.getTipo(i);
+            if (tipo == ColaEventos.TIPO_PANICO) {
+                for (int v = 0; v < VOCES; v++) {
+                    voces[v].cortar();
+                }
+            } else if (tipo == ColaEventos.TIPO_APAGAR) {
+                int capa = cola.getCapa(i);
+                int nota = cola.getNota(i);
+                for (int v = 0; v < VOCES; v++) {
+                    if (voces[v].enUso() && voces[v].getCapa() == capa && voces[v].getNota() == nota) {
+                        voces[v].soltar();
+                    }
+                }
+            } else {
+                dispararNota(cola.getCapa(i), cola.getNota(i), cola.getVelocidad(i),
+                        cola.getDuracionMs(i), ahoraNs);
+            }
+            cola.avanzar();
+        }
+    }
+
+    private void dispararNota(int capa, int nota, int velocidad, int duracionMs, long ahoraNs) {
+        if (capa < 0 || capa >= CAPAS) {
+            return;
+        }
+        int libre = -1;
+        for (int v = 0; v < VOCES; v++) {
+            if (!voces[v].enUso()) {
+                libre = v;
+                break;
+            }
+        }
+        if (libre < 0) {
+            // Sin sitio: se roba la que termine antes, no la mas antigua, para
+            // no cortar una nota que aun tiene recorrido.
+            libre = 0;
+            for (int v = 1; v < VOCES; v++) {
+                if (voces[v].getFinNs() - voces[libre].getFinNs() < 0) {
+                    libre = v;
+                }
+            }
+            voces[libre].cortar();
+            robadas++;
+        }
+        float vol = volumenCapa[capa];
+        int vel = (int) (velocidad * vol);
+        if (vel < 1) {
+            vel = 1;
+        }
+        long fin = duracionMs > 0 ? ahoraNs + duracionMs * 1000000L : 0;
+        voces[libre].disparar(capa, nota, vel, instrumentos[capa], fin);
+    }
+}
