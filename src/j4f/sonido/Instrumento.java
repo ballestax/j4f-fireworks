@@ -49,10 +49,34 @@ public final class Instrumento {
     /** Desafinacion en semitonos de una segunda copia, para dar cuerpo. */
     public final float destemple;
 
+    // --- Timbre dinamico -------------------------------------------------
+    //
+    // Las tablas de arriba son estaticas: el mismo espectro toque como se
+    // toque. Lo que distingue a un instrumento vivo es que el brillo sigue a
+    // la dinamica y decae a lo largo de la nota: los armonicos agudos mueren
+    // antes que los graves, sobre todo en lo pulsado y lo golpeado. Eso se
+    // anade con un filtro por voz cuyo corte depende de la velocidad y del
+    // tiempo desde el ataque. Es proceso de senal directo y honesto, no una
+    // red: la red de timbre de verdad necesita un corpus que aqui no hay.
+
+    /** Corte minimo del filtro, en multiplos de la fundamental. */
+    public final float brilloMin;
+    /** Corte con la dinamica al maximo, en multiplos de la fundamental. */
+    public final float brilloMax;
+    /** Caida del brillo hacia el minimo. Cero = sin caida (sostenido). */
+    public final double brilloCaidaMs;
+    /** Caida propia del ruido: el soplo del ataque. Cero = sostenido. */
+    public final double ruidoCaidaMs;
+
     private Instrumento(double caida, float impares, float formante, float anchoFormante,
             float nivelRuido, float centroRuido,
             double ataqueMs, double caidaMs, float sostenido, double soltadoMs,
-            float ganancia, float panoramica, float envio, float destemple) {
+            float ganancia, float panoramica, float envio, float destemple,
+            float brilloMin, float brilloMax, double brilloCaidaMs, double ruidoCaidaMs) {
+        this.brilloMin = brilloMin;
+        this.brilloMax = brilloMax;
+        this.brilloCaidaMs = brilloCaidaMs;
+        this.ruidoCaidaMs = ruidoCaidaMs;
         this.ataqueMs = ataqueMs;
         this.caidaMs = caidaMs;
         this.sostenido = sostenido;
@@ -166,36 +190,46 @@ public final class Instrumento {
     /** Pad: espectro ancho y dulce, ataque lento, cola larga y desafinado. */
     public static Instrumento pad() {
         return new Instrumento(1.7, 0.15f, 3, 2.5f, 0.010f, 4,
-                900, 2200, 0.75f, 2600, 0.34f, 0f, 0.55f, 0.10f);
+                900, 2200, 0.75f, 2600, 0.34f, 0f, 0.55f, 0.10f,
+                // El pad respira pero no decae: su brillo acompana la dinamica
+                // y se queda ahi mientras dura el acorde.
+                5f, 13f, 0, 0);
     }
 
     /** Bajo: fundamental fuerte y pocos armonicos. */
     public static Instrumento bajo() {
         return new Instrumento(2.1, 0.25f, 0, 1, 0.004f, 2,
-                18, 700, 0.62f, 320, 0.52f, 0f, 0.14f, 0.02f);
+                18, 700, 0.62f, 320, 0.52f, 0f, 0.14f, 0.02f,
+                2.5f, 7f, 900, 80);
     }
 
     /** Melodia: campana, con impares marcados y un golpe de aire al ataque. */
     public static Instrumento motivo() {
         return new Instrumento(1.35, 0.45f, 5, 2.0f, 0.030f, 8,
-                6, 1500, 0.30f, 900, 0.44f, -0.18f, 0.42f, 0f);
+                6, 1500, 0.30f, 900, 0.44f, -0.18f, 0.42f, 0f,
+                // Campana: arranca brillante y se va apagando hacia arriba,
+                // con un soplo de aire solo en el golpe.
+                4f, 18f, 1200, 60);
     }
 
     /** Contracanto: mas suave que la melodia y desplazado al otro lado. */
     public static Instrumento contra() {
         return new Instrumento(1.9, 0.30f, 2, 2.0f, 0.020f, 7,
-                40, 1100, 0.45f, 800, 0.32f, 0.30f, 0.48f, 0.03f);
+                40, 1100, 0.45f, 800, 0.32f, 0.30f, 0.48f, 0.03f,
+                3f, 10f, 1000, 90);
     }
 
     /** Textura: pulsada, brillante y de caida rapida, tipo arpa. */
     public static Instrumento textura() {
         return new Instrumento(1.25, 0.20f, 7, 3.0f, 0.045f, 10,
-                3, 800, 0.10f, 700, 0.30f, 0.12f, 0.50f, 0f);
+                3, 800, 0.10f, 700, 0.30f, 0.12f, 0.50f, 0f,
+                4f, 20f, 450, 40);
     }
 
     /** Percusion: casi todo ruido grave con un golpe corto de tono. */
     public static Instrumento percusion() {
         return new Instrumento(2.6, 0.10f, 0, 1, 0.55f, 1,
-                2, 180, 0.02f, 260, 0.70f, 0f, 0.30f, 0f);
+                2, 180, 0.02f, 260, 0.70f, 0f, 0.30f, 0f,
+                1.5f, 6f, 150, 180);
     }
 }

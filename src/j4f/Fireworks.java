@@ -52,6 +52,8 @@ public class Fireworks extends JPanel {
     private static final double DUR_AVISO_VOLUMEN = 1.8;
     /** Segundos sin interaccion tras los cuales la ayuda se atenua. */
     private static final double ESPERA_AYUDA = 6.0;
+    /** Color del halo del titulo, fijo: crearlo por fotograma era basura de GC. */
+    private static final Color HALO_TITULO = new Color(180, 205, 255);
 
     private final Animacion animacion = new Animacion();
     private final Musica musica = new Musica();
@@ -590,10 +592,16 @@ public class Fireworks extends JPanel {
         pintarVolumen(g, w, h);
         pintarHora(g, w, h);
         if (mostrarFps) {
+            // Panel de diagnostico: ademas del ritmo, por donde sale el sonido
+            // y cuanto manda la red frente al generador de reglas.
             g.setFont(fuenteDato);
             g.setColor(new Color(255, 255, 255, 120));
             String s = String.format("%.0f fps   %d explosiones", fps, explosiones.size());
-            g.drawString(s, w - g.getFontMetrics().stringWidth(s) - 22, 30);
+            int x = w - 22;
+            g.drawString(s, x - g.getFontMetrics().stringWidth(s), 30);
+            String s2 = musica.nombreSalida() + "   frases: " + musica.reparteFrases()
+                    + "   energia " + String.format("%.2f", musica.getEnergiaVisual());
+            g.drawString(s2, x - g.getFontMetrics().stringWidth(s2), 30 + g.getFontMetrics().getHeight());
         }
         if (animacion.isPausada()) {
             pintarPausa(g, w, h);
@@ -619,13 +627,13 @@ public class Fireworks extends JPanel {
         double y = h * 0.30;
 
         // Halo detras del texto para que despegue del cielo.
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) (0.30 * a)));
-        BufferedImage halo = Destello.de(new Color(180, 205, 255));
+        g.setComposite(Destello.mezcla((0.30 * a)));
+        BufferedImage halo = Destello.de(HALO_TITULO);
         int hw = (int) (ancho * 0.95);
         int hh = (int) (fuenteTitulo.getSize() * 2.6);
         g.drawImage(halo, (int) (w / 2 - hw / 2), (int) (y - hh * 0.62), hw, hh, null);
 
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) a));
+        g.setComposite(Destello.mezcla(a));
         g.setColor(new Color(255, 255, 255, 232));
         double cx = x;
         for (int i = 0; i < texto.length(); i++) {

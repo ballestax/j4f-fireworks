@@ -37,6 +37,24 @@ public final class Voz {
     private float ganDer;
     private float envio;
 
+    // Timbre dinamico: filtro de un polo cuyo corte sigue la dinamica y
+    // decae con la nota, mas una envolvente propia para el soplo del ataque.
+    private float filtroEstado;
+    private float brillo;
+    private float brilloMinimo;
+    private float factorCaidaBrillo;
+    private float ruidoEnv;
+    private float factorCaidaRuido;
+    private double frecuenciaHz;
+
+    // Bandas de ruido que de verdad aportan, resueltas al disparar. La
+    // campana de cada receta deja la mayoria de las dieciseis ganancias en
+    // cero: probarlas todas por muestra eran cientos de miles de
+    // comparaciones por bloque que no hacian nada.
+    private final int[] bandasActivas = new int[Instrumento.BANDAS_RUIDO];
+    private final float[] gananciasActivas = new float[Instrumento.BANDAS_RUIDO];
+    private int numBandasActivas;
+
     private int capa = -1;
     private int nota = -1;
     private boolean enUso;
@@ -98,6 +116,28 @@ public final class Voz {
 
         // Ya esta cocida: disparar una nota no cuesta mas que un indice.
         tabla = ins.tabla(nota);
+
+        // Timbre dinamico: mas fuerte se toca, mas abre el filtro; y desde
+        // ahi el brillo cae hacia el minimo con su propio tiempo.
+        frecuenciaHz = frecuencia;
+        float dinamica = (float) Math.pow(v, 0.8);
+        brilloMinimo = ins.brilloMin;
+        brillo = ins.brilloMin + (ins.brilloMax - ins.brilloMin) * dinamica;
+        factorCaidaBrillo = ins.brilloCaidaMs <= 0 ? 1f
+                : (float) Math.exp(-(1000.0 * MotorAudio.BLOQUE / frecMuestreo) / ins.brilloCaidaMs);
+        ruidoEnv = 1f;
+        factorCaidaRuido = ins.ruidoCaidaMs <= 0 ? 1f
+                : (float) Math.exp(-1000.0 / (ins.ruidoCaidaMs * frecMuestreo));
+        filtroEstado = 0;
+
+        numBandasActivas = 0;
+        for (int b = 0; b < Instrumento.BANDAS_RUIDO; b++) {
+            if (ins.ruido[b] > 0.0002f) {
+                bandasActivas[numBandasActivas] = b;
+                gananciasActivas[numBandasActivas] = ins.ruido[b];
+                numBandasActivas++;
+            }
+        }
     }
 
     public void soltar() {
@@ -122,7 +162,18 @@ public final class Voz {
             return;
         }
         float[] onda = tabla;
-        float[] gananciasRuido = instrumento.ruido;
+
+        // Coeficiente del filtro para este bloque. El corte va en multiplos
+        // de la fundamental; las constantes de tiempo del brillo son de
+        // cientos de milisegundos, asi que actualizarlo por bloque basta.
+        double corte = frecuenciaHz * brillo;
+        if (corte > frecMuestreo * 0.45) {
+            corte = frecMuestreo * 0.45;
+        } else if (corte < 120) {
+            corte = 120;
+        }
+        float k = (float) (1.0 - Math.exp(-6.2831853 * corte / frecMuestreo));
+        brillo = brilloMinimo + (brillo - brilloMinimo) * factorCaidaBrillo;
 
         for (int i = 0; i < n; i++) {
             float e = envolvente.siguiente();
@@ -148,12 +199,17 @@ public final class Voz {
             float v = s * e * amplitud;
             // El ruido son las bandas compartidas mezcladas con las ganancias
             // de esta voz: dieciseis multiplicar-sumar, no una convolucion.
-            for (int b = 0; b < Instrumento.BANDAS_RUIDO; b++) {
-                float g = gananciasRuido[b];
-                if (g > 0.0002f) {
-                    v += ruido.banda(b)[i] * g * e * amplitud;
-                }
+            // Su envolvente propia es el soplo del ataque: en lo pulsado se
+            // apaga enseguida aunque la nota siga.
+            float re = e * ruidoEnv * amplitud;
+            for (int b = 0; b < numBandasActivas; b++) {
+                v += ruido.banda(bandasActivas[b])[i] * gananciasActivas[b] * re;
             }
+            ruidoEnv *= factorCaidaRuido;
+
+            // El filtro que da vida al timbre: un polo, cuatro operaciones.
+            filtroEstado += k * (v - filtroEstado);
+            v = filtroEstado;
 
             float l = v * ganIzq;
             float r = v * ganDer;

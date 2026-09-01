@@ -14,15 +14,20 @@ import java.util.Random;
  */
 public final class Corpus {
 
-    // --- Topologia de fichas, igual que RedImprovisador ---
-    public static final int GRADO_MIN = -3;
-    public static final int GRADO_MAX = 9;
-    public static final int GRADOS = 13;
-    public static final int DURACIONES = 4;
-    public static final int HUECOS = 3;
-    public static final int VOCABULARIO = 157;
-    public static final int FICHA_FIN = 156;
-    public static final int CONTEXTO = 72;
+    // --- Topologia de fichas: la fuente es RedImprovisador, no una copia ---
+    //
+    // Antes estos numeros estaban duplicados aqui como literales. Si alguien
+    // ampliaba el ambito o las duraciones en la red, el corpus seguia
+    // generando datos con la topologia vieja y el pesos.bin reentrenado
+    // quedaba mal indexado en inferencia, sin ningun error visible.
+    public static final int GRADO_MIN = j4f.red.RedImprovisador.GRADO_MIN;
+    public static final int GRADO_MAX = j4f.red.RedImprovisador.GRADO_MAX;
+    public static final int GRADOS = j4f.red.RedImprovisador.GRADOS;
+    public static final int DURACIONES = j4f.red.RedImprovisador.DURACIONES;
+    public static final int HUECOS = j4f.red.RedImprovisador.HUECOS;
+    public static final int VOCABULARIO = j4f.red.RedImprovisador.VOCABULARIO;
+    public static final int FICHA_FIN = j4f.red.RedImprovisador.FICHA_FIN;
+    public static final int CONTEXTO = j4f.red.RedImprovisador.CONTEXTO;
 
     // --- Reglas del maestro (Musica.java) ---
     private static final int MOTIVO_MIN_NOTAS = 3;
@@ -61,25 +66,7 @@ public final class Corpus {
     }
 
     public static int ficha(int grado, int duracion, int huecoExtra) {
-        int g = grado - GRADO_MIN;
-        if (g < 0) {
-            g = 0;
-        } else if (g >= GRADOS) {
-            g = GRADOS - 1;
-        }
-        int d = duracion - 1;
-        if (d < 0) {
-            d = 0;
-        } else if (d >= DURACIONES) {
-            d = DURACIONES - 1;
-        }
-        int h = huecoExtra;
-        if (h < 0) {
-            h = 0;
-        } else if (h >= HUECOS) {
-            h = HUECOS - 1;
-        }
-        return (g * DURACIONES + d) * HUECOS + h;
+        return j4f.red.RedImprovisador.ficha(grado, duracion, huecoExtra);
     }
 
     private static int modulo(int a, int m) {

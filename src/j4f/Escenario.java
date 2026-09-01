@@ -48,6 +48,34 @@ public class Escenario {
     private static final Color NIEBLA_FRIA = new Color(96, 116, 156);
     private static final Color NIEBLA_CALIDA = new Color(168, 138, 104);
 
+    /**
+     * Tonos de estrella ya construidos por nivel de alfa. Crear dos Color por
+     * estrella y fotograma eran mas de doce mil objetos por segundo solo para
+     * variar la opacidad de tres tonos fijos; con 64 niveles no se distingue.
+     */
+    private static final Color[][] ESTRELLA_ALFA =
+            new Color[TONOS_ESTRELLA.length][65];
+
+    static {
+        for (int t = 0; t < TONOS_ESTRELLA.length; t++) {
+            Color c = TONOS_ESTRELLA[t];
+            for (int a = 0; a <= 64; a++) {
+                ESTRELLA_ALFA[t][a] = new Color(
+                        c.getRed(), c.getGreen(), c.getBlue(), a * 255 / 64);
+            }
+        }
+    }
+
+    private static Color tonoEstrella(int tono, int alfa255) {
+        int i = alfa255 * 64 / 255;
+        if (i < 0) {
+            i = 0;
+        } else if (i > 64) {
+            i = 64;
+        }
+        return ESTRELLA_ALFA[tono][i];
+    }
+
     private static final Color EDIFICIO_OSCURO = new Color(0x04, 0x06, 0x0F);
     private static final Color EDIFICIO_CLARO = new Color(0x0A, 0x10, 0x24);
     private static final Color LUZ_VENTANA = new Color(0xFF, 0xD9, 0xA0);
@@ -190,13 +218,13 @@ public class Escenario {
         BufferedImage domo = Destello.de(LUZ_CIUDAD);
         int dw = Math.max(2, (int) Math.round(ancho * 1.3));
         int dh = Math.max(2, (int) Math.round(alto * 0.5));
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.14f));
+        g.setComposite(Destello.mezcla(0.14f));
         g.drawImage(domo, (ancho - dw) / 2, yHorizonte - dh / 2, dw, dh, null);
 
         // Un segundo domo mas estrecho concentra el resplandor sobre el centro.
         int dw2 = Math.max(2, (int) Math.round(ancho * 0.7));
         int dh2 = Math.max(2, (int) Math.round(alto * 0.26));
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.10f));
+        g.setComposite(Destello.mezcla(0.10f));
         g.drawImage(domo, (ancho - dw2) / 2, yHorizonte - dh2 / 2, dw2, dh2, null);
 
         pintarLuna(g);
@@ -212,11 +240,11 @@ public class Escenario {
 
         BufferedImage halo = Destello.de(new Color(200, 216, 255));
         int hw = Math.max(4, (int) Math.round(r * 13));
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.30f));
+        g.setComposite(Destello.mezcla(0.30f));
         g.drawImage(halo, (int) Math.round(lx - hw / 2.0), (int) Math.round(ly - hw / 2.0), hw, hw, null);
 
         int hw2 = Math.max(4, (int) Math.round(r * 5));
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.55f));
+        g.setComposite(Destello.mezcla(0.55f));
         g.drawImage(halo, (int) Math.round(lx - hw2 / 2.0), (int) Math.round(ly - hw2 / 2.0), hw2, hw2, null);
 
         g.setComposite(AlphaComposite.SrcOver);
@@ -552,7 +580,7 @@ public class Escenario {
             int[] desplazamientos = {-7, -4, -2, 0, 2, 4, 7};
             for (int i = 0; i < desplazamientos.length; i++) {
                 int dy = desplazamientos[i];
-                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.030f));
+                g.setComposite(Destello.mezcla(0.030f));
                 g.drawImage(skyline,
                         0, dy, ancho, destAlto + dy,
                         0, yHorizonte, ancho, origenArriba, null);
@@ -606,12 +634,11 @@ public class Escenario {
             if (a > 255) {
                 a = 255;
             }
-            Color tono = TONOS_ESTRELLA[estTono[i]];
-            g.setColor(new Color(tono.getRed(), tono.getGreen(), tono.getBlue(), a));
+            g.setColor(tonoEstrella(estTono[i], a));
             g.fillRect(estX[i], estY[i], estTam[i], estTam[i]);
 
             if (estCruz[i]) {
-                g.setColor(new Color(tono.getRed(), tono.getGreen(), tono.getBlue(), a / 3));
+                g.setColor(tonoEstrella(estTono[i], a / 3));
                 g.fillRect(estX[i] - 3, estY[i] + 1, 8, 1);
                 g.fillRect(estX[i] + 1, estY[i] - 3, 1, 8);
             }
@@ -657,7 +684,7 @@ public class Escenario {
                     break;
                 }
                 int off = (int) Math.round(Math.sin(d * 0.055 + t * 2.2) * (1.5 + d * 0.05));
-                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+                g.setComposite(Destello.mezcla(a));
                 g.drawImage(estelas, off, y0 + d, ancho + off, y0 + d + paso,
                         0, sy, ancho, sy - paso, null);
             }
@@ -673,7 +700,7 @@ public class Escenario {
             int bh = Math.max(3, (int) Math.round(alto * 0.018));
             int bx = (int) Math.round((0.5 + 0.42 * Math.sin(fase)) * ancho - bw / 2.0);
             float a = (float) (0.07 + 0.05 * (0.5 + 0.5 * Math.sin(fase * 1.7 + i)));
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+            g.setComposite(Destello.mezcla(a));
             g.drawImage(brillo, bx, briY[i] - bh / 2, bw, bh, null);
         }
 
@@ -723,8 +750,7 @@ public class Escenario {
                 continue;
             }
             BufferedImage jiron = Destello.de(nieCalida[i] ? NIEBLA_CALIDA : NIEBLA_FRIA);
-            g.setComposite(AlphaComposite.getInstance(
-                    AlphaComposite.SRC_OVER, nieAlfa[i]));
+            g.setComposite(Destello.mezcla(nieAlfa[i]));
             g.drawImage(jiron, (int) Math.round(x), nieY[i] - h / 2, w, h, null);
         }
 
@@ -765,9 +791,9 @@ public class Escenario {
             }
             float a = (float) Math.min(1.0, onda);
             int hw = Math.max(6, (int) Math.round(alto * 0.026));
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.55f * a));
+            g.setComposite(Destello.mezcla(0.55f * a));
             g.drawImage(halo, balX[i] - hw / 2, balY[i] - hw / 2, hw, hw, null);
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+            g.setComposite(Destello.mezcla(a));
             g.setColor(LUZ_BALIZA);
             g.fillRect(balX[i], balY[i] - 1, 2, 2);
         }

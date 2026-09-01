@@ -23,6 +23,8 @@ public class Esquirla {
     private double vy;
 
     private Color color;
+    /** Resuelto al construir: el color no cambia y Destello.de es synchronized. */
+    private final java.awt.image.BufferedImage sprite;
     /** Radio base del nucleo en pixeles. */
     private double radio;
     /** Vida restante: empieza en 1 y muere en 0. */
@@ -49,6 +51,7 @@ public class Esquirla {
         this.vx = vx;
         this.vy = vy;
         this.color = color;
+        this.sprite = Destello.de(color);
         this.radio = radio;
         this.decaimiento = decaimiento;
         this.gravedad = gravedad;
@@ -154,7 +157,6 @@ public class Esquirla {
         if (a > 1) {
             a = 1;
         }
-        BufferedImage sprite = Destello.de(color);
         // El halo encoge conforme muere.
         double d = radio * (2.4 + 2.4 * v);
         g.setComposite(Destello.mezcla(a));

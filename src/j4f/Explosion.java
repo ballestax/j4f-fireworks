@@ -409,7 +409,7 @@ public class Explosion {
         // 1. El cohete es solo una brasa calida muy brillante.
         if (ascendiendo) {
             double d = r * 2.2;
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f));
+            g.setComposite(Destello.mezcla(1f));
             g.drawImage(Destello.de(calido),
                     (int) Math.round(x - d), (int) Math.round(y - d),
                     (int) Math.round(d * 2), (int) Math.round(d * 2), null);
@@ -419,8 +419,7 @@ public class Explosion {
         if (fogonazo > 0) {
             // Un destello breve y cenido: con radios grandes se comia la escena.
             double d = base * 0.34;
-            g.setComposite(AlphaComposite.getInstance(
-                    AlphaComposite.SRC_OVER, alfa(0.60 * fogonazo)));
+            g.setComposite(Destello.mezcla(alfa(0.60 * fogonazo)));
             g.drawImage(Destello.de(primario),
                     (int) Math.round(x - d), (int) Math.round(y - d),
                     (int) Math.round(d * 2), (int) Math.round(d * 2), null);
