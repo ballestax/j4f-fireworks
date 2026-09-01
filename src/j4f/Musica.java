@@ -191,8 +191,15 @@ public class Musica {
     private static final int NOTA_CLAVE = 75;
     private static final int NOTA_CONGA_AGUDA = 63;
     private static final int NOTA_CONGA_GRAVE = 64;
+    /**
+     * Campana (cowbell). En una descarga es la que empuja: marca todos los
+     * tiempos y no para, y sin ella el groove se queda en un esqueleto de
+     * clave sin motor.
+     */
+    private static final int NOTA_CAMPANA = 56;
     private static final int VEL_CLAVE = 42;
     private static final int VEL_CONGA = 34;
+    private static final int VEL_CAMPANA = 30;
     /** Corta: la percusion de mano no suena a nota tenida. */
     private static final int DURACION_PERCUSION_MS = 120;
 
@@ -623,6 +630,25 @@ public class Musica {
         int tipoSus4;
         boolean expresionRegulada;
         int estiloPercusion;
+        /**
+         * Silencio entre una frase y la siguiente, en unidades.
+         *
+         * Era una constante global de 2 a 6 unidades, y ahi estaba el problema
+         * de que la melodia sonara a pitos sueltos: tres o seis notas y hasta
+         * segundo y medio callada. Por genero, porque un pad ambiental quiere
+         * ese aire y una trompeta de salsa no.
+         */
+        int pausaMotivoMin;
+        int pausaMotivoMax;
+        /** Notas por frase. Tambien por genero: un riff no dura tres notas. */
+        int motivoMinNotas;
+        int motivoMaxNotas;
+        /**
+         * Tope del hueco entre notas de una frase, en unidades. Cero = sin
+         * tope. Es lo que impide que una nota larga abra un silencio largo y
+         * parta la linea en notas sueltas.
+         */
+        int maxHueco;
 
         /**
          * Ajustes de partida con valores sensatos.
@@ -782,6 +808,9 @@ public class Musica {
         a.usaSuspension = false;
         a.tipoSus4 = -1;
         a.expresionRegulada = false;
+        a.maxHueco = 3;
+        a.pausaMotivoMin = 1;
+        a.pausaMotivoMax = 3;
         return a;
     }
 
@@ -831,6 +860,9 @@ public class Musica {
         a.fraccionSuspension = CLASICA_FRACCION_SUSPENSION;
         a.tipoSus4 = CLASICA_TIPO_SUS4;
         a.expresionRegulada = true;
+        a.maxHueco = 4;
+        a.pausaMotivoMin = 1;
+        a.pausaMotivoMax = 3;
         return a;
     }
 
@@ -856,7 +888,7 @@ public class Musica {
         a.raizBase = 48;
         a.octavaPad = 0;
         a.octavaBajo = -12;
-        a.octavaMotivo = 12;
+        a.octavaMotivo = 19;   // la trompeta de una descarga grita, no acompana
         a.octavaContra = 12;
         a.escala = new int[]{0, 2, 4, 5, 7, 9, 10};   // mixolidio
         a.modosAlternativos = new int[][]{
@@ -873,6 +905,14 @@ public class Musica {
         a.estiloContra = CONTRA_RESPUESTA;
         a.estiloTextura = TEXTURA_NINGUNA;
         a.estiloPercusion = PERCUSION_CLAVE;
+        // La trompeta de una descarga no dice tres notas y calla: hace un
+        // guajeo que vuelve una y otra vez. Sin pausa entre frases y con
+        // frases largas, la reexposicion encadena y suena a riff.
+        a.pausaMotivoMin = 0;
+        a.pausaMotivoMax = 1;
+        a.motivoMinNotas = 6;
+        a.motivoMaxNotas = 10;
+        a.maxHueco = 2;
         a.varianteProgresion = VARIANTE_NINGUNA;
         a.velPad = 48;
         a.velBajo = 54;
@@ -881,9 +921,9 @@ public class Musica {
         a.reverberacion = 58;     // seco: el son no vive en una catedral
         a.coro = 18;
         a.usaPulso = true;
-        a.pulsoMs = 500;
+        a.pulsoMs = 420;
         a.swing = 0.5;            // recto, sin swing
-        a.unidadMs = 250;
+        a.unidadMs = 210;
         a.bajoDuracionMs = 0;
         a.probBajoMedioAcorde = 0.0;   // el tumbao ya pone el bajo
         a.probSilencioTextura = 0.0;
@@ -938,6 +978,9 @@ public class Musica {
         a.bajoDuracionMs = 1400;
         a.probBajoMedioAcorde = 0.35;
         a.probSilencioTextura = 0.22;   // respira: no es una caja de musica
+        a.maxHueco = 3;
+        a.pausaMotivoMin = 1;
+        a.pausaMotivoMax = 3;
         return a;
     }
 
@@ -991,15 +1034,40 @@ public class Musica {
         a.probSuspension = 0.40;
         a.fraccionSuspension = 0.45;
         a.tipoSus4 = 2;
+        a.maxHueco = 4;
+        a.pausaMotivoMin = 1;
+        a.pausaMotivoMax = 2;
         return a;
     }
 
-    private static final Ajustes AJUSTES_GUITARRA = ajustesGuitarra();
-    private static final Ajustes AJUSTES_VIOLIN = ajustesViolin();
-    private static final Ajustes AJUSTES_CARIBENA = ajustesCaribena();
-    private static final Ajustes AJUSTES_CHILL = ajustesChill();
-    private static final Ajustes AJUSTES_JAZZ = ajustesJazz();
-    private static final Ajustes AJUSTES_CLASICA = ajustesClasica();
+    /**
+     * Red de seguridad para los campos que no admiten cero.
+     *
+     * Las tres fabricas originales no pasan por base() y rellenan a mano, asi
+     * que cada campo nuevo les queda en el cero de Java. Con una longitud de
+     * frase eso no es un ajuste raro: es una frase de cero notas. En vez de
+     * confiar en acordarse de tocar cuatro fabricas, se completa aqui.
+     */
+    private static Ajustes completar(Ajustes a) {
+        if (a.motivoMinNotas <= 0) {
+            a.motivoMinNotas = MOTIVO_MIN_NOTAS;
+        }
+        if (a.motivoMaxNotas < a.motivoMinNotas) {
+            a.motivoMaxNotas = Math.max(MOTIVO_MAX_NOTAS, a.motivoMinNotas);
+        }
+        if (a.pausaMotivoMax <= 0) {
+            a.pausaMotivoMin = PAUSA_MOTIVO_MIN;
+            a.pausaMotivoMax = PAUSA_MOTIVO_MAX;
+        }
+        return a;
+    }
+
+    private static final Ajustes AJUSTES_GUITARRA = completar(ajustesGuitarra());
+    private static final Ajustes AJUSTES_VIOLIN = completar(ajustesViolin());
+    private static final Ajustes AJUSTES_CARIBENA = completar(ajustesCaribena());
+    private static final Ajustes AJUSTES_CHILL = completar(ajustesChill());
+    private static final Ajustes AJUSTES_JAZZ = completar(ajustesJazz());
+    private static final Ajustes AJUSTES_CLASICA = completar(ajustesClasica());
 
     /**
      * Ajustes de cada genero.
@@ -2092,7 +2160,8 @@ public class Musica {
     }
 
     private Motivo generarMotivoConReglas() {
-        int n = Azar.entre(MOTIVO_MIN_NOTAS, MOTIVO_MAX_NOTAS);
+        Ajustes aj = ajustes;
+        int n = Azar.entre(aj.motivoMinNotas, aj.motivoMaxNotas);
         int[] grados = new int[n];
         int[] duraciones = new int[n];
         int[] huecos = new int[n];
@@ -2319,8 +2388,15 @@ public class Musica {
         if (i > 0) {
             ultimaDireccionMotivo = r.grados[i] >= r.grados[i - 1] ? 1 : -1;
         }
-        r.proximaNs = ahoraNs + sumaUnidadesNs(a, r.unidad, r.huecos[i]);
-        r.unidad += r.huecos[i];
+        // El hueco hasta la nota siguiente sale de duracion mas extra, asi que
+        // una nota larga arrastra un silencio largo. En una linea que debe
+        // fluir eso la parte en notas sueltas, de ahi el tope por genero.
+        int hueco = r.huecos[i];
+        if (a.maxHueco > 0 && hueco > a.maxHueco) {
+            hueco = a.maxHueco;
+        }
+        r.proximaNs = ahoraNs + sumaUnidadesNs(a, r.unidad, hueco);
+        r.unidad += hueco;
         r.indice++;
         if (r.indice >= r.longitud) {
             r.activo = false;
@@ -2367,8 +2443,8 @@ public class Musica {
                 prepararRespuesta(a, ahoraNs);
             }
             double d = densidad(ahoraNs);
-            int pausa = (int) Math.round(PAUSA_MOTIVO_MAX - (PAUSA_MOTIVO_MAX - PAUSA_MOTIVO_MIN) * d);
-            pausa = limitar(pausa, PAUSA_MOTIVO_MIN, PAUSA_MOTIVO_MAX + 4);
+            int pausa = (int) Math.round(a.pausaMotivoMax - (a.pausaMotivoMax - a.pausaMotivoMin) * d);
+            pausa = limitar(pausa, a.pausaMotivoMin, a.pausaMotivoMax + 2);
             repMotivo.proximaNs = ahoraNs + sumaUnidadesNs(a, repMotivo.unidad, pausa);
             repMotivo.unidad += pausa;
         }
@@ -2882,6 +2958,13 @@ public class Musica {
                         DURACION_PERCUSION_MS, ahoraNs);
                 break;
             }
+        }
+        // Campana en cada tiempo: es el motor de la descarga.
+        if (celda % 2 == 0) {
+            // El primero de cada compas pega mas: marca el ciclo.
+            int vel = (celda % 8 == 0) ? VEL_CAMPANA + 8 : VEL_CAMPANA;
+            notaOn(CANAL_PERCUSION, NOTA_CAMPANA, velocidadHumana(vel),
+                    DURACION_PERCUSION_MS, ahoraNs);
         }
         for (int i = 0; i < CONGA_TUMBAO.length; i++) {
             if (CONGA_TUMBAO[i] == celda) {

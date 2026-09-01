@@ -289,6 +289,14 @@ public final class Instrumento {
                 0f, 0f, 0, 0);
     }
 
+    /** Campana: metalica, seca y con muchos parciales altos. */
+    public static Instrumento campana() {
+        return new Instrumento(0.95, 0.60f, 8, 2.0f, 0.10f, 12,
+                1, 130, 0.04f, 150, 0.34f, 0.26f, 0.20f, 0f,
+                8f, 26f, 130, 30,
+                0f, 0f, 0, 0);
+    }
+
     /** Claves: golpe seco de madera, corto y agudo. */
     public static Instrumento clave() {
         return new Instrumento(1.10, 0.50f, 3, 1.8f, 0.16f, 11,
@@ -354,6 +362,8 @@ public final class Instrumento {
         switch (nota) {
             case 75: case 76: case 77:
                 return clave();
+            case 56: case (56 + 1):
+                return campana();
             case 62: case 63: case 64:
                 return conga();
             default:
