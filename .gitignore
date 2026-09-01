@@ -8,3 +8,6 @@ nbproject/private/
 # Datos y modelos del entrenamiento offline (no viajan en la aplicacion)
 herramientas/datos/
 herramientas/salida/
+
+# Bancos de sonido: assets grandes, se descargan aparte
+sonido/

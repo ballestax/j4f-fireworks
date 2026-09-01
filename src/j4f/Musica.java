@@ -8,6 +8,7 @@ import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Synthesizer;
 import j4f.sonido.Salida;
 import j4f.sonido.SalidaSintetizador;
+import j4f.sonido.SalidaGervill;
 import j4f.red.Improvisador;
 import j4f.red.RedImprovisador;
 import j4f.red.AgenteMusical;
@@ -1211,8 +1212,22 @@ public class Musica {
      * falla, el sintetizador software del JDK.
      */
     private boolean abrirSalida() {
-        // Primero el motor propio: el sintetizador GS de Windows tiene un
-        // banco de 3,4 MB y es el techo de calidad que se quiere superar.
+        // Orden de preferencia: muestras reales por Gervill si hay banco de
+        // sonido, luego el motor propio, luego el MIDI del sistema. El
+        // sintetizador GS de Windows tiene un banco de 3,4 MB: es el suelo.
+        if (Runtime.getRuntime().availableProcessors() >= 3) {
+            try {
+                Salida g = new SalidaGervill();
+                if (g.abrir()) {
+                    sintetizadorPropio = g;
+                    return true;
+                }
+            } catch (Throwable t) {
+                // Sin banco de sonido en sonido/, o sin la API interna del
+                // JDK: se sigue con el motor propio y no se nota.
+                sintetizadorPropio = null;
+            }
+        }
         if (USAR_SINTETIZADOR_PROPIO && Runtime.getRuntime().availableProcessors() >= 3) {
             try {
                 Salida s = new SalidaSintetizador();
