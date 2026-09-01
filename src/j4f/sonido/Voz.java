@@ -47,6 +47,15 @@ public final class Voz {
     private float factorCaidaRuido;
     private double frecuenciaHz;
 
+    // Modulacion de altura: vibrato con retardo de entrada y ligado.
+    private float vibratoFase;
+    private float vibratoIncr;
+    private float vibratoProfundidad;
+    private float vibratoEntrada;
+    private float vibratoEntradaIncr;
+    private float incrementoDestino;
+    private float portamentoFactor;
+
     // Bandas de ruido que de verdad aportan, resueltas al disparar. La
     // campana de cada receta deja la mayoria de las dieciseis ganancias en
     // cero: probarlas todas por muestra eran cientos de miles de
@@ -82,12 +91,26 @@ public final class Voz {
         return finNs;
     }
 
+    /** Incremento de fase de la altura destino, para el ligado de la siguiente. */
+    public float getIncrementoDestino() {
+        return incrementoDestino;
+    }
+
     public boolean sonando() {
         return enUso && envolvente.activa();
     }
 
     /** Arranca la voz. Se llama desde el hilo de audio, en un limite de bloque. */
-    public void disparar(int capa, int nota, int velocidad, Instrumento ins, long finNs) {
+    /**
+     * Arranca la voz.
+     *
+     * @param incrementoPrevio incremento de fase de la nota anterior de esta
+     *        misma capa, o 0 si no hay. Lo lleva el mezclador y no la voz
+     *        porque las voces se reciclan entre capas: guardarlo aqui haria
+     *        que un violin ligara desde la ultima nota de un bajo.
+     */
+    public void disparar(int capa, int nota, int velocidad, Instrumento ins, long finNs,
+            float incrementoPrevio) {
         this.capa = capa;
         this.nota = nota;
         this.instrumento = ins;
@@ -129,6 +152,30 @@ public final class Voz {
         factorCaidaRuido = ins.ruidoCaidaMs <= 0 ? 1f
                 : (float) Math.exp(-1000.0 / (ins.ruidoCaidaMs * frecMuestreo));
         filtroEstado = 0;
+
+        // Vibrato: el retardo de entrada es lo que separa una nota expresiva
+        // de un oscilador. Se hace subir la profundidad, no arrancarla de golpe.
+        vibratoProfundidad = ins.vibratoSemitonos;
+        vibratoIncr = (float) (ins.vibratoHz / frecMuestreo);
+        vibratoFase = 0;
+        vibratoEntrada = 0;
+        vibratoEntradaIncr = ins.vibratoRetardoMs <= 0 ? 1f
+                : (float) (1.0 / (ins.vibratoRetardoMs * 0.001 * frecMuestreo));
+
+        // Portamento: si venimos de otra nota cercana, se llega deslizando.
+        incrementoDestino = incremento;
+        if (ins.portamentoMs > 0 && incrementoPrevio > 0) {
+            double razon = incremento / incrementoPrevio;
+            if (razon > 0.5 && razon < 2.0) {
+                incremento = incrementoPrevio;
+                portamentoFactor = (float) Math.exp(
+                        -1.0 / (ins.portamentoMs * 0.001 * frecMuestreo));
+            } else {
+                portamentoFactor = 0;
+            }
+        } else {
+            portamentoFactor = 0;
+        }
 
         numBandasActivas = 0;
         for (int b = 0; b < Instrumento.BANDAS_RUIDO; b++) {
@@ -181,6 +228,30 @@ public final class Voz {
                 cortar();
                 return;
             }
+            // Ligado hacia la altura destino.
+            if (portamentoFactor > 0) {
+                incremento = incrementoDestino
+                        + (incremento - incrementoDestino) * portamentoFactor;
+            }
+            float paso = incremento;
+            if (vibratoProfundidad > 0) {
+                if (vibratoEntrada < 1f) {
+                    vibratoEntrada += vibratoEntradaIncr;
+                    if (vibratoEntrada > 1f) {
+                        vibratoEntrada = 1f;
+                    }
+                }
+                // Semitonos a razon de frecuencia, linealizado: para
+                // profundidades de decimas de semitono el error no se oye y
+                // ahorra una exponencial por muestra.
+                float desv = vibratoProfundidad * vibratoEntrada
+                        * Tablas.seno(vibratoFase) * 0.0578f;
+                paso = incremento * (1f + desv);
+                vibratoFase += vibratoIncr;
+                if (vibratoFase >= 1f) {
+                    vibratoFase -= 1f;
+                }
+            }
             float pos = fase * TAM_TABLA;
             float s = Tablas.leer(onda, MASCARA, pos);
             // La copia desafinada da cuerpo sin doblar el coste de la tabla.
@@ -191,7 +262,7 @@ public final class Voz {
                     faseDestemple -= 1f;
                 }
             }
-            fase += incremento;
+            fase += paso;
             if (fase >= 1f) {
                 fase -= 1f;
             }

@@ -578,6 +578,69 @@ public class Musica {
         double fraccionSuspension;
         int tipoSus4;
         boolean expresionRegulada;
+
+        /**
+         * Ajustes de partida con valores sensatos.
+         *
+         * Las tres fabricas originales rellenan los cuarenta y seis campos a
+         * mano, y ese patron ya mostro su coste: un campo olvidado hereda el
+         * cero de Java en silencio, sin aviso de nadie. Los generos nuevos
+         * parten de aqui y solo declaran en que se diferencian, asi que lo que
+         * no se toca queda en un valor tocable y no en cero.
+         *
+         * Las fabricas viejas no se migran a proposito: estan verificadas y
+         * reescribirlas solo arriesgaria cambiar el sonido sin ganar nada.
+         */
+        static Ajustes base() {
+            Ajustes a = new Ajustes();
+            a.programaPad = 89;
+            a.programaBajo = 38;
+            a.programaMotivo = 11;
+            a.programaContra = 98;
+            a.programaTextura = 46;
+            a.raizBase = 48;
+            a.octavaPad = 0;
+            a.octavaBajo = -12;
+            a.octavaMotivo = 12;
+            a.octavaContra = 0;
+            a.octavaTextura = 12;
+            a.escala = new int[]{0, 2, 4, 5, 7, 9, 11};
+            a.modosAlternativos = new int[][]{{0, 2, 4, 5, 7, 9, 11}};
+            a.tiposAcorde = new int[][]{{0, 4, 7}, {0, 3, 7}};
+            a.progresion = new int[][]{{0, 0}, {7, 0}, {9, 1}, {5, 0}};
+            a.normalizarRegistro = true;
+            a.acordeMinMs = 4000;
+            a.acordeMaxMs = 6000;
+            a.solapeMs = 1200;
+            a.estiloArmonia = ARMONIA_SOSTENIDA;
+            a.estiloBajo = BAJO_SOSTENIDO;
+            a.estiloContra = CONTRA_NINGUNO;
+            a.estiloTextura = TEXTURA_NINGUNA;
+            a.varianteProgresion = VARIANTE_NINGUNA;
+            a.velPad = 46;
+            a.velBajo = 44;
+            a.velMotivo = 48;
+            a.velContra = 38;
+            a.velTextura = 38;
+            a.reverberacion = 90;
+            a.coro = 30;
+            a.usaPulso = true;
+            a.pulsoMs = 600;
+            a.swing = 0.5;
+            a.unidadMs = 400;
+            a.bajoDuracionMs = 0;
+            a.probBajoMedioAcorde = 0.30;
+            a.gradoBajoMedio = 1;
+            a.probSilencioTextura = 0.05;
+            a.probCompFuerte = 0.20;
+            a.probCompDebil = 0.40;
+            a.usaSuspension = false;
+            a.probSuspension = 0.0;
+            a.fraccionSuspension = 0.0;
+            a.tipoSus4 = -1;
+            a.expresionRegulada = true;
+            return a;
+        }
     }
 
     private static Ajustes ajustesChill() {
@@ -729,14 +792,32 @@ public class Musica {
     private static final Ajustes AJUSTES_JAZZ = ajustesJazz();
     private static final Ajustes AJUSTES_CLASICA = ajustesClasica();
 
+    /**
+     * Ajustes de cada genero.
+     *
+     * Antes esto era una cadena de if que acababa devolviendo CHILL para
+     * cualquier constante no contemplada: anadir un genero al enum y olvidarse
+     * de esta funcion daba un genero que sonaba a chill sin que nada fallara.
+     * Ahora el switch es exhaustivo y lo que falta se ve.
+     */
     private static Ajustes ajustesDe(Genero g) {
-        if (g == Genero.JAZZ) {
-            return AJUSTES_JAZZ;
+        if (g == null) {
+            return AJUSTES_CHILL;
         }
-        if (g == Genero.CLASICA) {
-            return AJUSTES_CLASICA;
+        switch (g) {
+            case CHILL:
+                return AJUSTES_CHILL;
+            case JAZZ:
+                return AJUSTES_JAZZ;
+            case CLASICA:
+                return AJUSTES_CLASICA;
+            default:
+                // Genero anadido al enum sin su fabrica. Suena a chill, pero
+                // deja rastro en vez de disimularlo.
+                System.err.println("j4f.Musica: sin ajustes para el genero " + g
+                        + "; se usa CHILL");
+                return AJUSTES_CHILL;
         }
-        return AJUSTES_CHILL;
     }
 
     // ------------------------------------------------------------------

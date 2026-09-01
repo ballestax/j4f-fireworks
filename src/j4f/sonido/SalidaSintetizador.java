@@ -105,6 +105,15 @@ public final class SalidaSintetizador implements Salida {
             }
         } else if (comando == ShortMessage.NOTE_OFF) {
             cola.ofrecer(ColaEventos.TIPO_APAGAR, capa, dato1, 0, 0, ahora, generacion);
+        } else if (comando == ShortMessage.PROGRAM_CHANGE) {
+            // Antes se descartaban a proposito y el resultado era que el
+            // genero cambiaba las notas pero no el timbre: la trompeta del
+            // jazz y el vibrafono del chill sonaban igual. Ahora el numero de
+            // programa elige la familia de receta de la capa.
+            Mezclador m = motor.getMezclador();
+            if (m != null && capa != CAPA_PERCUSION) {
+                m.setInstrumento(capa, Instrumento.dePrograma(dato1, m.getInstrumento(capa)));
+            }
         } else if (comando == ShortMessage.CONTROL_CHANGE) {
             if (dato1 == CC_VOLUMEN) {
                 Mezclador m = motor.getMezclador();

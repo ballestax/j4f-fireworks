@@ -12,6 +12,8 @@ public final class Mezclador {
 
     public static final int CAPAS = 6;
     private static final int VOCES = 24;
+    /** La percusion es la ultima capa; alli la nota elige la receta. */
+    private static final int CAPA_PERCUSION = 5;
     /**
      * Ganancia de compensacion de la mezcla.
      *
@@ -25,6 +27,8 @@ public final class Mezclador {
     private final Voz[] voces = new Voz[VOCES];
     private final Instrumento[] instrumentos = new Instrumento[CAPAS];
     private final float[] volumenCapa = new float[CAPAS];
+    /** Ultima altura tocada en cada capa, para el ligado. */
+    private final float[] incrementoPrevioCapa = new float[CAPAS];
 
     private final BancoRuido ruido;
     private final Reverberacion reverberacion;
@@ -77,6 +81,23 @@ public final class Mezclador {
 
     public void setVolumenGeneral(float v) {
         volumenGeneral = v < 0 ? 0 : (v > 1 ? 1 : v);
+    }
+
+    /**
+     * Cambia el timbre de una capa en caliente.
+     *
+     * Es lo que hacia falta para que el genero se oiga en el motor propio:
+     * antes las seis recetas se fijaban en el constructor y no habia forma de
+     * que un cambio de genero las tocara.
+     */
+    public void setInstrumento(int capa, Instrumento ins) {
+        if (capa >= 0 && capa < CAPAS && ins != null) {
+            instrumentos[capa] = ins;
+        }
+    }
+
+    public Instrumento getInstrumento(int capa) {
+        return capa >= 0 && capa < CAPAS ? instrumentos[capa] : null;
     }
 
     public void setVolumenCapa(int capa, float v) {
@@ -207,6 +228,10 @@ public final class Mezclador {
             vel = 1;
         }
         long fin = duracionMs > 0 ? ahoraNs + duracionMs * 1000000L : 0;
-        voces[libre].disparar(capa, nota, vel, instrumentos[capa], fin);
+        Instrumento ins = capa == CAPA_PERCUSION
+                ? Instrumento.dePercusion(nota)
+                : instrumentos[capa];
+        voces[libre].disparar(capa, nota, vel, ins, fin, incrementoPrevioCapa[capa]);
+        incrementoPrevioCapa[capa] = voces[libre].getIncrementoDestino();
     }
 }
