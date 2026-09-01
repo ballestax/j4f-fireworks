@@ -23,7 +23,7 @@ public final class Modelo {
 
     public static final int V = 157;      // vocabulario
     public static final int E = 32;       // embebido
-    public static final int C = 72;       // contexto
+    public static final int C = j4f.red.RedImprovisador.CONTEXTO;   // 75 con seis generos
     public static final int H = 128;      // ocultas
     public static final int IN = E + C;   // 104, entrada de la capa 1
     public static final int MAXT = 16;    // pasos maximos por frase
@@ -547,7 +547,10 @@ public final class Modelo {
             d.writeByte('4');
             d.writeByte('F');
             d.writeByte('W');
-            d.writeInt(1);
+            // De la constante, no clavado: al subir la version del formato el
+            // entrenador seguia escribiendo la vieja y el cargador rechazaba
+            // sus propios pesos recien entrenados.
+            d.writeInt(j4f.red.PesosNeuronales.VERSION);
             d.writeInt(TENSORES);
             for (int t = 0; t < TENSORES; t++) {
                 byte[] nombre = NOMBRES[t].getBytes("UTF-8");

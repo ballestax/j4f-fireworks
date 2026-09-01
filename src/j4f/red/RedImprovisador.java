@@ -30,7 +30,14 @@ public final class RedImprovisador {
     public static final int FICHA_FIN = VOCABULARIO - 1;
 
     public static final int EMBEBIDO = 32;
-    public static final int CONTEXTO = 72;
+    /**
+     * Largo del vector de condicionamiento.
+     *
+     * Paso de 72 a 75 al llegar a seis generos: la casilla del genero era de
+     * tres y CARIBENA, GUITARRA y VIOLIN acababan compartiendo hueco con
+     * CLASICA, o sea condicionamiento equivocado.
+     */
+    public static final int CONTEXTO = 75;
     public static final int OCULTAS = 128;
     public static final int ENTRADA = EMBEBIDO + CONTEXTO;
 

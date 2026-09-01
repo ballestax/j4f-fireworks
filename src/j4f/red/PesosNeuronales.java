@@ -27,7 +27,13 @@ import java.util.Map;
 public final class PesosNeuronales {
 
     private static final String MAGIA = "J4FW";
-    public static final int VERSION = 1;
+    /**
+     * Version 2: el contexto paso de 72 a 75 al ampliar los generos. Subirla
+     * hace que un pesos.bin antiguo se rechace de forma limpia en vez de
+     * cargarse y sonar a ruido; quien llama se queda con el generador de
+     * reglas y la aplicacion ni se entera.
+     */
+    public static final int VERSION = 2;
 
     private final Map<String, Matriz> tensores;
 

@@ -28,6 +28,19 @@ public final class Corpus {
     public static final int VOCABULARIO = j4f.red.RedImprovisador.VOCABULARIO;
     public static final int FICHA_FIN = j4f.red.RedImprovisador.FICHA_FIN;
     public static final int CONTEXTO = j4f.red.RedImprovisador.CONTEXTO;
+    /** Casillas del genero. Debe cuadrar con Musica.GENEROS_CONTEXTO. */
+    public static final int GENEROS = 6;
+
+    /**
+     * Desplazamientos dentro del vector de contexto.
+     *
+     * Estaban clavados como 28 y 34, que era una bomba de relojeria: al
+     * ensanchar la casilla del genero se corren tres posiciones y el corpus
+     * habria leido el campo equivocado sin dar ningun error. Derivados del
+     * reparto, se mueven solos.
+     */
+    private static final int DESP_MODO = GENEROS + 5 + 8 + 12;
+    private static final int DESP_MASCARA_ACORDE = DESP_MODO + 6;
 
     // --- Reglas del maestro (Musica.java) ---
     private static final int MOTIVO_MIN_NOTAS = 3;
@@ -119,7 +132,7 @@ public final class Corpus {
 
     private static Frase unaFrase(Random rnd) {
         // --- Campos del contexto ---
-        int genero = rnd.nextInt(3);
+        int genero = rnd.nextInt(GENEROS);
         int seccion = rnd.nextInt(5);
         int calidad = rnd.nextInt(8);
         int modo = rnd.nextInt(6);
@@ -187,6 +200,28 @@ public final class Corpus {
                     saltos[i] = signo * (1 + rnd.nextInt(2));
                     grandes--;
                 }
+            }
+        }
+
+        // Mejora 4: sabor por genero.
+        //
+        // Sin esto la casilla del genero seria un campo que la red aprende a
+        // ignorar, porque no predice nada: seis generos con frases iguales no
+        // dan ninguna senal. Cada uno sesga el contorno hacia lo suyo.
+        //   3 CARIBENA: mas saltos, contornos de pregunta y respuesta.
+        //   4 GUITARRA: arpegiado, se mueve por notas del acorde.
+        //   5 VIOLIN:   grados conjuntos y frases que suben largo.
+        for (int i = 0; i < n - 1; i++) {
+            if (genero == 3 && rnd.nextDouble() < 0.35) {
+                int signo = saltos[i] > 0 ? 1 : -1;
+                saltos[i] = signo * (2 + rnd.nextInt(3));
+            } else if (genero == 4 && rnd.nextDouble() < 0.45) {
+                // Terceras y cuartas: el movimiento propio de un arpegio.
+                int signo = saltos[i] > 0 ? 1 : -1;
+                saltos[i] = signo * (2 + rnd.nextInt(2));
+            } else if (genero == 5 && rnd.nextDouble() < 0.55) {
+                int signo = saltos[i] > 0 ? 1 : -1;
+                saltos[i] = signo;
             }
         }
 
@@ -385,7 +420,7 @@ public final class Corpus {
         float[] c = new float[CONTEXTO];
         int p = 0;
         c[p + genero] = 1;
-        p += 3;
+        p += GENEROS;
         c[p + seccion] = 1;
         p += 5;
         c[p + calidad] = 1;
@@ -420,12 +455,12 @@ public final class Corpus {
     public static boolean esNotaDeAcorde(float[] ctx, int grado) {
         int modo = 0;
         for (int i = 1; i < 6; i++) {
-            if (ctx[28 + i] > ctx[28 + modo]) {
+            if (ctx[DESP_MODO + i] > ctx[DESP_MODO + modo]) {
                 modo = i;
             }
         }
         int altura = alturaDe(grado, MODOS[modo]);
-        return ctx[34 + altura] > 0.5f;
+        return ctx[DESP_MASCARA_ACORDE + altura] > 0.5f;
     }
 
     /** Contexto de ejemplo, reproducible, para las pruebas doradas. */
@@ -444,7 +479,7 @@ public final class Corpus {
         for (int i = 0; i < ac.length; i++) {
             mascaraAcorde |= 1 << ((raiz + ac[i]) % 12);
         }
-        return armarContexto(r.nextInt(3), r.nextInt(5), calidad, raiz, modo,
+        return armarContexto(r.nextInt(GENEROS), r.nextInt(5), calidad, raiz, modo,
                 mascaraAcorde, mascaraEscala, r.nextInt(8), r.nextFloat(),
                 r.nextFloat() * 2 - 1, r.nextFloat() * 2 - 1,
                 r.nextInt(4) / 3f, r.nextInt(3) - 1, r.nextFloat());

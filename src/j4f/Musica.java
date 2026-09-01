@@ -66,6 +66,16 @@ public class Musica {
     /** Cacheado para no crear un array en cada llamada a siguienteGenero(). */
     private static final Genero[] GENEROS = Genero.values();
 
+    /**
+     * Casillas que el vector de contexto reserva al genero.
+     *
+     * Tiene que cuadrar con lo que espera RedImprovisador.CONTEXTO y con el
+     * corpus de entrenamiento. Si se anade un genero al enum hay que subirla,
+     * ampliar CONTEXTO y reentrenar; mientras tanto los pesos viejos se
+     * rechazan por version y manda el generador de reglas.
+     */
+    private static final int GENEROS_CONTEXTO = 6;
+
     // ------------------------------------------------------------------
     // Canales y mezcla
     // ------------------------------------------------------------------
@@ -2044,8 +2054,13 @@ public class Musica {
         }
         int p = 0;
         Genero g = genero;
-        c[p + (g == Genero.CHILL ? 0 : g == Genero.JAZZ ? 1 : 2)] = 1;
-        p += 3;
+        // Una casilla por genero. Antes eran tres con un ternario que hacia
+        // caer todo lo que no fuera chill ni jazz en la misma, asi que
+        // caribena, guitarra y violin se condicionaban como si fueran
+        // clasica. Va por ordinal: anadir un genero al enum solo obliga a
+        // subir GENEROS_CONTEXTO y reentrenar.
+        c[p + limitar(g.ordinal(), 0, GENEROS_CONTEXTO - 1)] = 1;
+        p += GENEROS_CONTEXTO;
         c[p + limitar(seccionActual, 0, 4)] = 1;
         p += 5;
         c[p + limitar(tipoAcordeActual, 0, 7)] = 1;
