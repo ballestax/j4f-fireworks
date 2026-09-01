@@ -60,7 +60,7 @@ public class Musica {
 
     /** Generos disponibles. El nombre se muestra en pantalla tal cual. */
     public enum Genero {
-        CHILL, JAZZ, CLASICA
+        CHILL, JAZZ, CLASICA, CARIBENA
     }
 
     /** Cacheado para no crear un array en cada llamada a siguienteGenero(). */
@@ -131,6 +131,8 @@ public class Musica {
     private static final int ARMONIA_SOSTENIDA = 0;
     /** Acordes cortos y sincopados sobre la rejilla de corcheas. */
     private static final int ARMONIA_COMPING = 1;
+    /** Montuno: arpegio sincopado de dos manos alineado con la clave. */
+    private static final int ARMONIA_MONTUNO = 2;
 
     /** Fundamental al cambiar de acorde y a veces a mitad. */
     private static final int BAJO_DISPERSO = 0;
@@ -138,6 +140,8 @@ public class Musica {
     private static final int BAJO_CAMINANTE = 1;
     /** Fundamental larga, del ancho del acorde. */
     private static final int BAJO_SOSTENIDO = 2;
+    /** Tumbao: fundamental y quinta, con la del acorde siguiente anticipada. */
+    private static final int BAJO_TUMBAO = 3;
 
     /** Sin contracanto. */
     private static final int CONTRA_NINGUNO = 0;
@@ -152,6 +156,27 @@ public class Musica {
     private static final int TEXTURA_NINGUNA = 0;
     /** Acorde desplegado subiendo y bajando. */
     private static final int TEXTURA_ARPEGIO = 1;
+
+    /** Sin patron de percusion: es lo normal y el valor por defecto. */
+    private static final int PERCUSION_NINGUNA = 0;
+    /** Clave 3-2 con congas a contratiempo. */
+    private static final int PERCUSION_CLAVE = 1;
+
+    /**
+     * Clave 3-2, en posiciones de corchea sobre un ciclo de dos compases.
+     * Es el esqueleto sobre el que se alinea todo lo demas en el son.
+     */
+    private static final int[] CLAVE_32 = {0, 3, 6, 10, 12};
+    /** Congas: tumbao basico, en los contratiempos que la clave deja libres. */
+    private static final int[] CONGA_TUMBAO = {2, 7, 8, 14, 15};
+    private static final int CICLO_CLAVE = 16;
+    private static final int NOTA_CLAVE = 75;
+    private static final int NOTA_CONGA_AGUDA = 63;
+    private static final int NOTA_CONGA_GRAVE = 64;
+    private static final int VEL_CLAVE = 42;
+    private static final int VEL_CONGA = 34;
+    /** Corta: la percusion de mano no suena a nota tenida. */
+    private static final int DURACION_PERCUSION_MS = 120;
 
     // ------------------------------------------------------------------
     // Secciones: el arco de la pieza
@@ -579,6 +604,7 @@ public class Musica {
         double fraccionSuspension;
         int tipoSus4;
         boolean expresionRegulada;
+        int estiloPercusion;
 
         /**
          * Ajustes de partida con valores sensatos.
@@ -640,6 +666,7 @@ public class Musica {
             a.fraccionSuspension = 0.0;
             a.tipoSus4 = -1;
             a.expresionRegulada = true;
+            a.estiloPercusion = PERCUSION_NINGUNA;
             return a;
         }
     }
@@ -789,6 +816,64 @@ public class Musica {
         return a;
     }
 
+    /**
+     * Son cubano.
+     *
+     * Parte de Ajustes.base() y solo declara en que se diferencia, que es
+     * justo para lo que se creo base(): rellenar cuarenta y seis campos a mano
+     * es como se cuelan los ceros silenciosos.
+     *
+     * El pulso de 500 ms deja la corchea en 250, o sea unos 120 por minuto:
+     * tempo de son y, sobre todo, por encima del suelo de resolucion del
+     * motor, que con un sondeo de 25 ms empieza a temblar por debajo de los
+     * 120 ms por celda.
+     */
+    private static Ajustes ajustesCaribena() {
+        Ajustes a = Ajustes.base();
+        a.programaPad = 0;        // piano acustico para el montuno
+        a.programaBajo = 33;      // bajo electrico con dedos
+        a.programaMotivo = 56;    // trompeta
+        a.programaContra = 114;   // steel drum
+        a.programaTextura = 0;
+        a.raizBase = 48;
+        a.octavaPad = 0;
+        a.octavaBajo = -12;
+        a.octavaMotivo = 12;
+        a.octavaContra = 12;
+        a.escala = new int[]{0, 2, 4, 5, 7, 9, 10};   // mixolidio
+        a.modosAlternativos = new int[][]{
+            {0, 2, 4, 5, 7, 9, 10},
+            {0, 2, 4, 5, 7, 9, 11}};
+        a.tiposAcorde = new int[][]{{0, 4, 7}, {0, 4, 7, 10}, {0, 3, 7, 10}};
+        // I - IV - V7 - IV, con el II-7 asomando: el ciclo del son.
+        a.progresion = new int[][]{{0, 0}, {5, 0}, {7, 1}, {5, 0}, {2, 2}, {7, 1}};
+        a.acordeMinMs = 3000;
+        a.acordeMaxMs = 4200;
+        a.solapeMs = 0;
+        a.estiloArmonia = ARMONIA_MONTUNO;
+        a.estiloBajo = BAJO_TUMBAO;
+        a.estiloContra = CONTRA_RESPUESTA;
+        a.estiloTextura = TEXTURA_NINGUNA;
+        a.estiloPercusion = PERCUSION_CLAVE;
+        a.varianteProgresion = VARIANTE_NINGUNA;
+        a.velPad = 48;
+        a.velBajo = 54;
+        a.velMotivo = 50;
+        a.velContra = 42;
+        a.reverberacion = 58;     // seco: el son no vive en una catedral
+        a.coro = 18;
+        a.usaPulso = true;
+        a.pulsoMs = 500;
+        a.swing = 0.5;            // recto, sin swing
+        a.unidadMs = 250;
+        a.bajoDuracionMs = 0;
+        a.probBajoMedioAcorde = 0.0;   // el tumbao ya pone el bajo
+        a.probSilencioTextura = 0.0;
+        a.expresionRegulada = false;
+        return a;
+    }
+
+    private static final Ajustes AJUSTES_CARIBENA = ajustesCaribena();
     private static final Ajustes AJUSTES_CHILL = ajustesChill();
     private static final Ajustes AJUSTES_JAZZ = ajustesJazz();
     private static final Ajustes AJUSTES_CLASICA = ajustesClasica();
@@ -812,6 +897,8 @@ public class Musica {
                 return AJUSTES_JAZZ;
             case CLASICA:
                 return AJUSTES_CLASICA;
+            case CARIBENA:
+                return AJUSTES_CARIBENA;
             default:
                 // Genero anadido al enum sin su fabrica. Suena a chill, pero
                 // deja rastro en vez de disimularlo.
@@ -1065,6 +1152,12 @@ public class Musica {
                 enviarControl(canal, CC_TODAS_NOTAS_OFF, 0);
                 enviarControl(canal, CC_TODO_SONIDO_OFF, 0);
             }
+            // El canal de percusion tambien: desde que hay generos con patron
+            // ritmico propio, dejarlo sin barrer arrastraria las claves del
+            // genero anterior al siguiente. Los estallidos no se ven afectados
+            // porque su nota se dispara de nuevo en cada fuego.
+            enviarControl(CANAL_PERCUSION, CC_TODAS_NOTAS_OFF, 0);
+            enviarControl(CANAL_PERCUSION, CC_TODO_SONIDO_OFF, 0);
             acordeSonando = new int[0];
             aplicarTimbres();
         } catch (Exception e) {
@@ -2496,6 +2589,125 @@ public class Musica {
     }
 
     /** Negra del bajo caminante: fundamental, nota del acorde o grado conjunto. */
+    /**
+     * Tumbao: el bajo del son.
+     *
+     * Lo que lo define no son las notas sino donde NO caen. El tiempo fuerte
+     * se calla y el peso va al cuatro y al "y de dos"; ademas la nota del
+     * acorde siguiente se adelanta medio compas, que es la anticipacion que
+     * empuja la musica hacia delante. Sin eso son notas correctas sin sabor.
+     */
+    private void tocarBajoTumbao(Ajustes a, long ahoraNs) {
+        int celda = indiceCorchea % 8;
+        // Silencio en el uno, ataque en el "y de dos" (3) y en el cuatro (6).
+        if (celda != 3 && celda != 6) {
+            return;
+        }
+        int base = tonicaActual + a.octavaBajo;
+        int nota;
+        if (celda == 3) {
+            nota = base + gradoRaizAcorde12();
+        } else {
+            // El cuatro anticipa la fundamental del acorde que viene.
+            int paso = (pasoProgresion + 1) % a.progresion.length;
+            nota = base + a.progresion[paso][0];
+        }
+        if (a.normalizarRegistro) {
+            nota = ajustarRegistro(nota, base);
+        }
+        int dur = (int) (a.pulsoMs * 0.85);
+        notaOn(CANAL_BAJO, nota, velocidadHumana(a.velBajo + desvioVelocidad(ahoraNs)),
+                dur, ahoraNs);
+        notaBajoActual = nota;
+    }
+
+    /** Semitonos de la fundamental del acorde respecto de la tonica. */
+    private int gradoRaizAcorde12() {
+        return ((raizAcordeAbs - tonicaActual) % 12 + 12) % 12;
+    }
+
+    /**
+     * Montuno: el piano del son.
+     *
+     * Arpegio de dos manos sobre el acorde ya conducido, con las notas
+     * repartidas en octavas y cayendo en contratiempo. Se apoya en
+     * notasPadPrevias, que ya trae la conduccion de voces hecha, asi que el
+     * montuno hereda gratis el movimiento minimo entre acordes.
+     */
+    private void montuno(Ajustes a, long ahoraNs) {
+        int[] voces = notasPadPrevias;
+        if (voces == null || voces.length == 0) {
+            return;
+        }
+        int celda = indiceCorchea % 8;
+        // Patron clasico: las corcheas de contratiempo mas el uno.
+        if (celda != 0 && celda != 3 && celda != 5 && celda != 6) {
+            return;
+        }
+        int indice;
+        int octava;
+        switch (celda) {
+            case 0:
+                indice = 0;
+                octava = 0;
+                break;
+            case 3:
+                indice = 1;
+                octava = 12;
+                break;
+            case 5:
+                indice = 2;
+                octava = 0;
+                break;
+            default:
+                indice = 1;
+                octava = 12;
+                break;
+        }
+        int nota = voces[indice % voces.length] + octava;
+        int vel = velocidadHumana(a.velPad + desvioVelocidad(ahoraNs)
+                + (celda == 0 ? 4 : -3));
+        notaOn(CANAL_PAD, nota, vel, (int) (a.pulsoMs * 0.55), ahoraNs);
+        // La segunda voz, una tercera por encima, da el sonido de dos manos.
+        if (celda == 3 || celda == 6) {
+            int otra = voces[(indice + 1) % voces.length] + octava;
+            notaOn(CANAL_PAD, otra, Math.max(1, vel - 6),
+                    (int) (a.pulsoMs * 0.45), ahoraNs);
+        }
+    }
+
+    /**
+     * Clave y congas.
+     *
+     * Va por notaOn() y no por la via rapida de golpe(): asi entra en la tabla
+     * de voces y apagarVencidas() le manda su NOTE_OFF. Es lo que mantiene
+     * este patron separado de la maquinaria de los estallidos, que usa dos
+     * ranuras globales sin exclusion y las pisaria.
+     *
+     * Las notas tampoco chocan: claves en 75 y congas en 63 y 64, frente al
+     * bombo 36 y el tom 41 de los fuegos.
+     */
+    private void percusionClave(Ajustes a, long ahoraNs) {
+        int celda = indiceCorchea % CICLO_CLAVE;
+        for (int i = 0; i < CLAVE_32.length; i++) {
+            if (CLAVE_32[i] == celda) {
+                notaOn(CANAL_PERCUSION, NOTA_CLAVE, velocidadHumana(VEL_CLAVE),
+                        DURACION_PERCUSION_MS, ahoraNs);
+                break;
+            }
+        }
+        for (int i = 0; i < CONGA_TUMBAO.length; i++) {
+            if (CONGA_TUMBAO[i] == celda) {
+                // Las dos alturas alternan: es lo que hace que suene a tumbao
+                // y no a un solo parche repetido.
+                int nota = (i % 2 == 0) ? NOTA_CONGA_GRAVE : NOTA_CONGA_AGUDA;
+                notaOn(CANAL_PERCUSION, nota, velocidadHumana(VEL_CONGA),
+                        DURACION_PERCUSION_MS, ahoraNs);
+                break;
+            }
+        }
+    }
+
     private void tocarBajoCaminante(Ajustes a, long ahoraNs) {
         int centro = a.raizBase + a.octavaBajo;
         int fundamental = ajustarRegistro(raizAcordeAbs + a.octavaBajo, centro);
@@ -2609,8 +2821,17 @@ public class Musica {
         if (a.estiloBajo == BAJO_CAMINANTE && fuerte && capaBajoActiva(ahoraNs)) {
             tocarBajoCaminante(a, ahoraNs);
         }
+        if (a.estiloBajo == BAJO_TUMBAO && capaBajoActiva(ahoraNs)) {
+            tocarBajoTumbao(a, ahoraNs);
+        }
         if (a.estiloArmonia == ARMONIA_COMPING) {
             compear(a, ahoraNs, fuerte);
+        }
+        if (a.estiloArmonia == ARMONIA_MONTUNO) {
+            montuno(a, ahoraNs);
+        }
+        if (a.estiloPercusion == PERCUSION_CLAVE) {
+            percusionClave(a, ahoraNs);
         }
         if (a.estiloTextura == TEXTURA_ARPEGIO) {
             arpegiar(a, ahoraNs);
