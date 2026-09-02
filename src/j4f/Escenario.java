@@ -34,6 +34,15 @@ public class Escenario {
     private static final int NUM_ESTRELLAS = 190;
     private static final int NUM_ESTRELLAS_CRUZ = 8;
     private static final int MAX_VENTANAS_VIVAS = 14;
+    /**
+     * Candidatas que se recogen antes de filtrar.
+     *
+     * El tope final se aplica DESPUES de descartar las tapadas. Aplicarlo al
+     * recoger llenaba el cupo con la capa del fondo, que se dibuja primero, y
+     * las de delante la tapaban casi entera: quedaba una baliza por escena.
+     */
+    private static final int CANDIDATAS_VIVAS = 90;
+    private static final int CANDIDATAS_BALIZAS = 40;
     private static final int MAX_BALIZAS = 4;
     private static final int NUM_BRILLOS_AGUA = 5;
     /** Jirones de niebla que se arrastran entre los edificios. */
@@ -656,13 +665,31 @@ public class Escenario {
         List<int[]> balizas = new ArrayList<int[]>();
 
         // De la mas lejana a la mas cercana: las de delante tapan a las de atras.
+        //
+        // Las balizas y las ventanas que parpadean se pintan en vivo sobre
+        // esta imagen ya compuesta, asi que una de una torre del fondo se
+        // dibujaba encima del edificio que deberia ocultarla. Para saber cual
+        // ha quedado tapada se anota el color que tenia su pixel justo despues
+        // de dibujar SU capa; si al terminar es otro, se le puso algo delante.
         for (int capa = 0; capa < CAPAS_CIUDAD; capa++) {
+            int nv = vivas.size();
+            int nb = balizas.size();
             pintarCapaCiudad(g, capa, vivas, balizas);
+            for (int i = nv; i < vivas.size(); i++) {
+                int[] v = vivas.get(i);
+                v[4] = img.getRGB(limitar(v[0] + v[2] / 2, 0, ancho - 1),
+                        limitar(v[1] + v[3] / 2, 0, alto - 1));
+            }
+            for (int i = nb; i < balizas.size(); i++) {
+                int[] b = balizas.get(i);
+                b[2] = img.getRGB(limitar(b[0], 0, ancho - 1),
+                        limitar(b[1], 0, alto - 1));
+            }
         }
 
         g.dispose();
-        volcarVentanas(vivas);
-        volcarBalizas(balizas);
+        volcarVentanas(img, vivas);
+        volcarBalizas(img, balizas);
         return img;
     }
 
@@ -759,7 +786,15 @@ public class Escenario {
                 alturaRetranqueo = (int) Math.round(h * Azar.entre(0.35, 0.65));
                 mermaRetranqueo = Azar.entre(0.16, 0.34);
             }
-            rellenarCuerpo(g, x, cima, w, h, merma, alturaRetranqueo, mermaRetranqueo);
+            Shape cuerpo = formaCuerpo(x, cima, w, h, merma, alturaRetranqueo,
+                    mermaRetranqueo);
+            // Todo lo que va sobre la fachada se recorta al contorno. Ir
+            // corrigiendo sitio por sitio (ventanas, cara lateral, luz de
+            // canto) dejaba siempre alguno fuera y aparecian luces flotando
+            // junto a las torres afiladas. Con el recorte no se escapa nada.
+            Shape recorteEdificio = g.getClip();
+            g.clip(cuerpo);
+            g.fill(cuerpo);
 
             // Cara lateral: un edificio visto de esquina ensena dos caras, y
             // la que no mira al observador va mas oscura. Es lo que le da
@@ -798,12 +833,26 @@ public class Escenario {
                     (int) (70 + 60 * cercania)));
             g.fillRect(x, cima, 1, h);
 
-            pintarRemate(g, x, cima, w, h, base, cercania, balizas);
+            // El remate sale por encima de la cima, asi que va sin recorte.
+            // Pero tiene que apoyarse en el ancho de la CIMA, no en el de la
+            // base: en una torre afilada, coronarla con el ancho de abajo deja
+            // agujas y maquinaria flotando fuera del edificio.
+            g.setClip(recorteEdificio);
+            int sangriaCima = sangriaEn(cima, h, w, cima, merma,
+                    alturaRetranqueo, mermaRetranqueo);
+            pintarRemate(g, x + sangriaCima, cima, w - 2 * sangriaCima, h,
+                    base, cercania, balizas);
 
             if (capa > 0) {
+                // Recortadas al cuerpo tambien: la sangria coloca bien las
+                // columnas, pero el recorte es el que garantiza que ninguna
+                // se salga por un caso no previsto.
+                g.clip(cuerpo);
                 pintarVentanas(g, x, cima, w, h, pisoAlto, minVentana,
                         vivas, cercania, calima, ladoOscuroIzquierda,
-                        ladoOscuroDerecha);
+                        ladoOscuroDerecha, merma, alturaRetranqueo,
+                        mermaRetranqueo);
+                g.setClip(recorteEdificio);
             }
             // A veces el siguiente se mete por delante: en una ciudad los
             // edificios se tapan entre si, no van en fila india.
@@ -820,11 +869,10 @@ public class Escenario {
      * afilada de una caja, y a esta distancia esa silueta pesa mas que
      * cualquier detalle de la fachada.
      */
-    private void rellenarCuerpo(Graphics2D g, int x, int cima, int w, int h,
+    private Shape formaCuerpo(int x, int cima, int w, int h,
             double merma, int alturaRetranqueo, double mermaRetranqueo) {
         if (merma <= 0 && alturaRetranqueo <= 0) {
-            g.fillRect(x, cima, w, h);
-            return;
+            return new java.awt.Rectangle(x, cima, w, h);
         }
         java.awt.Polygon cuerpo = new java.awt.Polygon();
         int base = cima + h;
@@ -844,7 +892,7 @@ public class Escenario {
             cuerpo.addPoint(x + w - s, cima);
         }
         cuerpo.addPoint(x + w, base);
-        g.fill(cuerpo);
+        return cuerpo;
     }
 
     /** Cuanto hay que meterse por cada lado a la altura dada. */
@@ -931,8 +979,8 @@ public class Escenario {
                 if (arriba - ym > 0) {
                     g.setColor(Destello.mezclar(base, EDIFICIO_CLARO, 0.6f));
                     g.fillRect(xm, ym, Azar.probabilidad(0.5) ? 1 : 2, arriba - ym);
-                    if (balizas.size() < MAX_BALIZAS && Azar.probabilidad(0.75)) {
-                        balizas.add(new int[]{xm, ym});
+                    if (balizas.size() < CANDIDATAS_BALIZAS && Azar.probabilidad(0.75)) {
+                        balizas.add(new int[]{xm, ym, 0});
                     }
                 }
             }
@@ -982,7 +1030,8 @@ public class Escenario {
      */
     private void pintarVentanas(Graphics2D g, int x, int y, int w, int h,
             int pisoAlto, int minVentana, List<int[]> vivas,
-            double cercania, float calima, int ladoIzq, int ladoDer) {
+            double cercania, float calima, int ladoIzq, int ladoDer,
+            double merma, int alturaRetranqueo, double mermaRetranqueo) {
         g.setPaint(null);
         // La cara lateral oscura no lleva ventanas encendidas: es la que no
         // mira al observador, y iluminarla desharia el volumen.
@@ -995,11 +1044,13 @@ public class Escenario {
         if (tipo == TIPO_OSCURO) {
             // Unas pocas luces sueltas y poco mas: tambien hace falta que
             // algunos edificios esten a oscuras para que los demas destaquen.
-            pintarLucesSueltas(g, x, y, w, h, pisoAlto, cercania, calima);
+            pintarLucesSueltas(g, x, y, w, h, pisoAlto, cercania, calima,
+                    merma, alturaRetranqueo, mermaRetranqueo);
             return;
         }
         if (tipo == TIPO_CRISTAL) {
-            pintarBandasCristal(g, x, y, w, h, pisoAlto, cercania, calima);
+            pintarBandasCristal(g, x, y, w, h, pisoAlto, cercania, calima,
+                    merma, alturaRetranqueo, mermaRetranqueo);
             return;
         }
 
@@ -1030,12 +1081,17 @@ public class Escenario {
                 if (!plantaViva && !Azar.probabilidad(densidad)) {
                     continue;
                 }
-                int vx = x + margen + c * paso;
-                if (vx + vw > x + w - margen) {
+                // Sangria de la planta: en un edificio que se afila, el ancho
+                // util mengua al subir. Sin esto las ventanas se salian del
+                // contorno y quedaban luces flotando fuera del edificio.
+                int sang = sangriaEn(y, h, w, fy, merma, alturaRetranqueo,
+                        mermaRetranqueo);
+                int vx = x + sang + margen + c * paso;
+                if (vx + vw > x + w - sang - margen) {
                     continue;
                 }
-                if (vivas.size() < MAX_VENTANAS_VIVAS && Azar.probabilidad(0.02)) {
-                    vivas.add(new int[]{vx, fy, vw, vh});
+                if (vivas.size() < CANDIDATAS_VIVAS && Azar.probabilidad(0.02)) {
+                    vivas.add(new int[]{vx, fy, vw, vh, 0});
                     continue;
                 }
                 g.setColor(colorVentana(oficinas, cercania, calima));
@@ -1051,7 +1107,8 @@ public class Escenario {
      * a distancia la diferencia se nota mas que ningun otro detalle.
      */
     private void pintarBandasCristal(Graphics2D g, int x, int y, int w, int h,
-            int pisoAlto, double cercania, float calima) {
+            int pisoAlto, double cercania, float calima,
+            double merma, int alturaRetranqueo, double mermaRetranqueo) {
         int margen = Math.max(1, w / 14);
         int alturaBanda = Math.max(2, (int) Math.round(pisoAlto * 1.4));
         int grosor = Math.max(1, (int) Math.round(alturaBanda * 0.42));
@@ -1060,9 +1117,11 @@ public class Escenario {
                 continue;   // planta sin luz
             }
             // La banda no llega siempre de lado a lado: se interrumpe.
-            int desde = x + margen + (Azar.probabilidad(0.35)
+            int sang = sangriaEn(y, h, w, fy, merma, alturaRetranqueo,
+                    mermaRetranqueo);
+            int desde = x + sang + margen + (Azar.probabilidad(0.35)
                     ? (int) Math.round(w * Azar.entre(0.0, 0.35)) : 0);
-            int hasta = x + w - margen - (Azar.probabilidad(0.35)
+            int hasta = x + w - sang - margen - (Azar.probabilidad(0.35)
                     ? (int) Math.round(w * Azar.entre(0.0, 0.35)) : 0);
             if (hasta - desde < 2) {
                 continue;
@@ -1112,15 +1171,21 @@ public class Escenario {
 
     /** Edificio casi apagado: cuatro luces sueltas y nada mas. */
     private void pintarLucesSueltas(Graphics2D g, int x, int y, int w, int h,
-            int pisoAlto, double cercania, float calima) {
+            int pisoAlto, double cercania, float calima,
+            double merma, int alturaRetranqueo, double mermaRetranqueo) {
         // Una o dos luces, rara vez tres. Un edificio a oscuras con cinco
         // ventanas encendidas no esta a oscuras.
         int n = Azar.probabilidad(0.12) ? 0 : Azar.entre(2, 6);
         int vw = Math.max(1, (int) Math.round(w * 0.09));
         int vh = Math.max(1, (int) Math.round(pisoAlto * 0.9));
         for (int i = 0; i < n; i++) {
-            int vx = x + Azar.entre(2, Math.max(3, w - vw - 2));
             int vy = y + Azar.entre(pisoAlto, Math.max(pisoAlto + 1, h - vh));
+            int sang = sangriaEn(y, h, w, vy, merma, alturaRetranqueo,
+                    mermaRetranqueo);
+            if (w - 2 * sang - vw - 4 < 1) {
+                continue;
+            }
+            int vx = x + sang + Azar.entre(2, Math.max(3, w - 2 * sang - vw - 2));
             g.setColor(colorVentana(Azar.probabilidad(0.3), cercania, calima));
             g.fillRect(vx, vy, vw, vh);
         }
@@ -1146,8 +1211,25 @@ public class Escenario {
         return Destello.alfa(luz, op);
     }
 
-    private void volcarVentanas(List<int[]> vivas) {
-        int n = vivas.size();
+    /**
+     * Fija las ventanas que parpadean, descartando las que quedan tapadas.
+     *
+     * Mismo problema que las balizas: se recogen durante el horneado de las
+     * tres capas pero se pintan en vivo sobre la imagen ya compuesta, asi que
+     * una ventana de una torre del fondo parpadeaba encima del edificio que
+     * la deberia ocultar.
+     */
+    private void volcarVentanas(BufferedImage capa, List<int[]> vivas) {
+        List<int[]> visibles = new ArrayList<int[]>();
+        for (int i = 0; i < vivas.size(); i++) {
+            int[] v = vivas.get(i);
+            // Se comprueba en el centro de la ventana, no en su esquina.
+            if (!cambioElPixel(capa, v[0] + v[2] / 2, v[1] + v[3] / 2, v[4])) {
+                visibles.add(v);
+            }
+        }
+        // El tope, ahora si, sobre las que de verdad se ven.
+        int n = Math.min(visibles.size(), MAX_VENTANAS_VIVAS);
         venX = new int[n];
         venY = new int[n];
         venW = new int[n];
@@ -1155,7 +1237,7 @@ public class Escenario {
         venFase = new double[n];
         venVel = new double[n];
         for (int i = 0; i < n; i++) {
-            int[] v = vivas.get(i);
+            int[] v = visibles.get(i);
             venX[i] = v[0];
             venY[i] = v[1];
             venW[i] = v[2];
@@ -1165,17 +1247,70 @@ public class Escenario {
         }
     }
 
-    private void volcarBalizas(List<int[]> balizas) {
-        int n = balizas.size();
+    /**
+     * Cierto si la ventana ha quedado cubierta por un edificio posterior.
+     *
+     * Se apoya en que una ventana encendida deja pixeles claros: si donde
+     * estaba ahora hay fachada oscura, es que algo se le puso delante.
+     */
+    private boolean tapadaPorDelante(BufferedImage capa, int x, int y) {
+        if (capa == null || x < 0 || x >= ancho || y < 0 || y >= alto) {
+            return true;
+        }
+        int px = capa.getRGB(x, y);
+        int lum = ((px >> 16 & 0xFF) * 30 + (px >> 8 & 0xFF) * 59 + (px & 0xFF) * 11) / 100;
+        return lum < 60;
+    }
+
+    /**
+     * Fija las balizas de antena, descartando las que quedan tapadas.
+     *
+     * Se recogen mientras se hornean las tres capas, pero se pintan en vivo
+     * encima de la imagen ya compuesta: una baliza de una torre del fondo se
+     * dibujaba sobre el edificio que deberia ocultarla, y se veia el punto
+     * rojo atravesando la fachada de delante.
+     *
+     * Para saber si esta tapada se mira el ancho de lo opaco a su alrededor:
+     * un mastil tiene uno o dos pixeles y deja aire a los lados; si a seis
+     * pixeles a ambos lados sigue habiendo relleno, lo que hay ahi es un
+     * edificio por delante y la baliza sobra.
+     */
+    private void volcarBalizas(BufferedImage capa, List<int[]> balizas) {
+        List<int[]> visibles = new ArrayList<int[]>();
+        for (int i = 0; i < balizas.size(); i++) {
+            int[] b = balizas.get(i);
+            if (!cambioElPixel(capa, b[0], b[1], b[2])) {
+                visibles.add(b);
+            }
+        }
+        int n = Math.min(visibles.size(), MAX_BALIZAS);
         balX = new int[n];
         balY = new int[n];
         balFase = new double[n];
         for (int i = 0; i < n; i++) {
-            int[] b = balizas.get(i);
+            int[] b = visibles.get(i);
             balX[i] = b[0];
             balY[i] = b[1];
             balFase[i] = Azar.angulo();
         }
+    }
+
+    /** Cierto si en esa cota hay fachada ancha, y no el mastil de la baliza. */
+    /**
+     * Cierto si el pixel dejo de ser el que era al anotarlo.
+     *
+     * Si cambio es porque una capa posterior pinto encima, o sea que hay un
+     * edificio por delante y ese punto de luz no debe verse.
+     */
+    private boolean cambioElPixel(BufferedImage capa, int x, int y, int referencia) {
+        if (capa == null || x < 0 || x >= ancho || y < 0 || y >= alto) {
+            return true;
+        }
+        return capa.getRGB(x, y) != referencia;
+    }
+
+    private static int limitar(int v, int min, int max) {
+        return v < min ? min : (v > max ? max : v);
     }
 
     // ------------------------------------------------------------------
