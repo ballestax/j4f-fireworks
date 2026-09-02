@@ -19,12 +19,10 @@ lo que ayuda en un nicho con mucho público internacional.
 
 ## Descripción del canal (pestaña "Información")
 
-> Fuegos artificiales sobre una bahía en calma, en directo y sin repetirse nunca.
+> Fuegos artificiales en directo sobre una bahía en calma.
 >
-> Ponlo de fondo para estudiar, trabajar, leer o dormir. No hay locutor, no hay
-> cortes y no hay dos minutos iguales: cada cohete, cada estallido y cada nota
-> de música se generan en el momento, así que lo que ves ahora no ha existido
-> antes ni volverá a existir.
+> Ponlo de fondo para estudiar, trabajar, leer o dormir. No hay locutor y no
+> hay cortes: solo la ciudad, el agua y los fuegos.
 >
 > La música cambia sola entre seis ambientes —chill, jazz, clásica, caribeña,
 > guitarra y violín— y acompaña a lo que pasa en el cielo.
@@ -35,8 +33,8 @@ lo que ayuda en un nicho con mucho público internacional.
 
 ## Descripción corta (bajo el nombre, ~120 caracteres)
 
-> Fuegos artificiales en directo sobre una bahía en calma. Nunca se repiten.
-> Para estudiar, trabajar o dormir.
+> Fuegos artificiales en directo sobre una bahía en calma. Para estudiar,
+> trabajar o dormir.
 
 ---
 
@@ -44,10 +42,9 @@ lo que ayuda en un nicho con mucho público internacional.
 
 > 🎆 Sonnus Flare · Fuegos artificiales en directo 24/7
 >
-> Un espectáculo que no se repite nunca, con música generada en tiempo real.
-> Perfecto como fondo para estudiar, concentrarte, relajarte o dormir.
+> Un espectáculo continuo con música generada en tiempo real. Perfecto como
+> fondo para estudiar, concentrarte, relajarte o dormir.
 >
-> ⏱ Sin bucles: todo lo que suena y se ve se está creando ahora mismo.
 > 🎵 Seis ambientes musicales que se alternan solos.
 > 🌙 Sin voz, sin cortes, sin sobresaltos.
 >
@@ -79,7 +76,7 @@ para un vídeo aparte, un comentario fijado o la sección de enlaces:
 > Los fuegos tienen física propia; la música la compone una red neuronal que
 > propone las frases y un motor de armonía que las corrige; el sonido pasa por
 > un sintetizador y una cadena de efectos hechos a mano. No hay vídeo grabado
-> ni pistas de audio: si lo dejas puesto un mes, no se repite.
+> ni pistas de audio: todo se calcula mientras lo ves.
 
 ---
 

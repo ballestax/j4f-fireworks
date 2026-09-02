@@ -76,6 +76,23 @@ public class Escenario {
         return ESTRELLA_ALFA[tono][i];
     }
 
+    /**
+     * Capas de profundidad de la ciudad.
+     *
+     * Con una sola fila de rectangulos la ciudad se lee como un cartel
+     * recortado. Con tres y perspectiva aerea entre ellas, se lee como una
+     * ciudad. Subir el numero da mas profundidad y mas coste al redimensionar.
+     */
+    private static final int CAPAS_CIUDAD = 3;
+    /** Hacia donde se destinen los edificios lejanos: el aire, no el negro. */
+    private static final Color CALIMA_CIUDAD = new Color(0x2A, 0x3C, 0x6E);
+    /** Resplandor de la calle que sube por el pie de los edificios. */
+    private static final Color RESPLANDOR_CALLE = new Color(0x4A, 0x38, 0x22);
+    /** Luz fria de oficina. */
+    private static final Color LUZ_OFICINA = new Color(0xBF, 0xD8, 0xFF);
+    /** Azul de una pantalla encendida a deshora. */
+    private static final Color LUZ_PANTALLA = new Color(0x7E, 0xA8, 0xE8);
+
     private static final Color EDIFICIO_OSCURO = new Color(0x04, 0x06, 0x0F);
     private static final Color EDIFICIO_CLARO = new Color(0x0A, 0x10, 0x24);
     private static final Color LUZ_VENTANA = new Color(0xFF, 0xD9, 0xA0);
@@ -307,6 +324,18 @@ public class Escenario {
     // Skyline
     // ------------------------------------------------------------------
 
+    /**
+     * Silueta de la ciudad, horneada una vez por redimension.
+     *
+     * Tres capas de profundidad en vez de una fila plana de rectangulos. Lo
+     * que da sensacion de ciudad y no de cartel recortado es la perspectiva
+     * aerea: lo lejano se aclara y se destine porque hay aire de por medio, y
+     * lo cercano se recorta oscuro contra ello. Encima, cada edificio lleva su
+     * degradado vertical, su remate propio y una luz de canto tomada del
+     * resplandor de la calle.
+     *
+     * Todo esto se paga al redimensionar, no en cada fotograma.
+     */
     private BufferedImage crearSkyline() {
         BufferedImage img = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
@@ -315,87 +344,196 @@ public class Escenario {
         List<int[]> vivas = new ArrayList<int[]>();
         List<int[]> balizas = new ArrayList<int[]>();
 
-        int minVentana = Math.max(1, (int) Math.round(alto * 0.005));
-        int pisoAlto = Math.max(3, (int) Math.round(alto * 0.014));
-
-        int x = 0;
-        while (x < ancho) {
-            int w = (int) Math.round(Azar.entre(alto * 0.03, alto * 0.11));
-            if (w < 6) {
-                w = 6;
-            }
-            int h = (int) Math.round(Azar.entre(alto * 0.04, alto * 0.20));
-            if (h < 8) {
-                h = 8;
-            }
-            if (h > yHorizonte - 2) {
-                h = Math.max(4, yHorizonte - 2);
-            }
-            int baseAlta = yHorizonte - h;
-            int cima = baseAlta;
-
-            Color relleno = Destello.mezclar(EDIFICIO_OSCURO, EDIFICIO_CLARO,
-                    (float) Azar.entre(0.0, 1.0));
-            g.setColor(relleno);
-            g.fillRect(x, baseAlta, w, h);
-
-            // Remate escalonado.
-            if (Azar.probabilidad(0.35) && w > 10) {
-                int w2 = (int) Math.round(w * Azar.entre(0.45, 0.72));
-                int h2 = (int) Math.round(h * Azar.entre(0.12, 0.32));
-                if (w2 >= 4 && h2 >= 3 && baseAlta - h2 >= 0) {
-                    g.fillRect(x + (w - w2) / 2, baseAlta - h2, w2, h2);
-                    cima = baseAlta - h2;
-                }
-            }
-
-            // Mastil de antena con su baliza.
-            if (Azar.probabilidad(0.30)) {
-                int hm = (int) Math.round(h * Azar.entre(0.14, 0.32));
-                if (hm >= 4) {
-                    int xm = x + w / 2;
-                    int ym = Math.max(0, cima - hm);
-                    if (cima - ym > 0) {
-                        g.setColor(Destello.mezclar(relleno, EDIFICIO_CLARO, 0.6f));
-                        g.fillRect(xm, ym, Azar.probabilidad(0.5) ? 1 : 2, cima - ym);
-                        if (balizas.size() < MAX_BALIZAS && Azar.probabilidad(0.75)) {
-                            balizas.add(new int[]{xm, ym});
-                        }
-                    }
-                }
-            }
-
-            pintarVentanas(g, x, baseAlta, w, h, pisoAlto, minVentana, vivas);
-
-            x += w + Azar.entre(-2, 3);
+        // De la mas lejana a la mas cercana: las de delante tapan a las de atras.
+        for (int capa = 0; capa < CAPAS_CIUDAD; capa++) {
+            pintarCapaCiudad(g, capa, vivas, balizas);
         }
 
         g.dispose();
-
         volcarVentanas(vivas);
         volcarBalizas(balizas);
         return img;
     }
 
-    /** Ventanas encendidas: pocas, irregulares, nunca una rejilla uniforme. */
+    /**
+     * Una capa de profundidad.
+     *
+     * @param capa 0 la mas lejana. Decide altura, contraste y detalle: los
+     *             edificios del fondo no llevan ventanas sueltas porque a esa
+     *             distancia no se distinguirian y solo serian ruido.
+     */
+    private void pintarCapaCiudad(Graphics2D g, int capa, List<int[]> vivas,
+            List<int[]> balizas) {
+        double cercania = capa / (double) (CAPAS_CIUDAD - 1);
+        double altMin = alto * (0.040 + 0.070 * cercania);
+        double altMax = alto * (0.115 + 0.185 * cercania);
+        double anchoMin = alto * (0.020 + 0.020 * cercania);
+        double anchoMax = alto * (0.055 + 0.065 * cercania);
+        // Calima de la distancia: el fondo tira a azul claro, no a negro.
+        float calima = (float) (0.34 * (1 - cercania));
+        int baseY = yHorizonte + (int) Math.round(alto * 0.004 * (1 - cercania));
+
+        int pisoAlto = Math.max(3, (int) Math.round(alto * 0.014));
+        int minVentana = Math.max(1, (int) Math.round(alto * 0.005));
+
+        int x = -(int) Math.round(Azar.entre(0.0, anchoMax));
+        while (x < ancho) {
+            int w = (int) Math.round(Azar.entre(anchoMin, anchoMax));
+            if (w < 5) {
+                w = 5;
+            }
+            int h = (int) Math.round(Azar.entre(altMin, altMax));
+            if (h < 8) {
+                h = 8;
+            }
+            if (h > baseY - 2) {
+                h = Math.max(4, baseY - 2);
+            }
+            int cima = baseY - h;
+
+            Color base = Destello.mezclar(EDIFICIO_OSCURO, EDIFICIO_CLARO,
+                    (float) Azar.entre(0.0, 1.0));
+            base = Destello.mezclar(base, CALIMA_CIUDAD, calima);
+            if (capa == CAPAS_CIUDAD - 1) {
+                // La primera fila se recorta casi en negro contra lo de atras:
+                // sin ese contraste las tres capas se funden en una mancha.
+                base = Destello.mezclar(base, EDIFICIO_OSCURO, 0.45f);
+            }
+            // Degradado vertical: el pie recoge el resplandor de la calle y la
+            // coronacion queda limpia contra el cielo. Plano se ve a carton.
+            Color pie = Destello.mezclar(base, RESPLANDOR_CALLE,
+                    0.22f + 0.10f * (1 - (float) cercania));
+            g.setPaint(new LinearGradientPaint(
+                    new Point2D.Float(0, cima), new Point2D.Float(0, baseY),
+                    new float[]{0f, 0.62f, 1f},
+                    new Color[]{base, base, pie}));
+            g.fillRect(x, cima, w, h);
+
+            // Luz de canto en una arista: la ciudad ilumina los bordes.
+            g.setPaint(null);
+            g.setColor(Destello.alfa(Destello.mezclar(base, RESPLANDOR_CALLE, 0.55f),
+                    (int) (70 + 60 * cercania)));
+            g.fillRect(x, cima, 1, h);
+
+            pintarRemate(g, x, cima, w, h, base, cercania, balizas);
+
+            if (capa > 0) {
+                pintarVentanas(g, x, cima, w, h, pisoAlto, minVentana,
+                        vivas, cercania, calima);
+            }
+            x += w + (int) Math.round(Azar.entre(-2.0, 4.0 + 4.0 * cercania));
+        }
+    }
+
+    /**
+     * Corona el edificio.
+     *
+     * Cinco remates distintos en vez de una azotea plana: es lo que le da
+     * silueta propia a la linea del cielo.
+     *
+     * @return la cota mas alta alcanzada.
+     */
+    private int pintarRemate(Graphics2D g, int x, int cima, int w, int h,
+            Color base, double cercania, List<int[]> balizas) {
+        g.setPaint(null);
+        g.setColor(base);
+        double d = Azar.entre(0.0, 1.0);
+        int arriba = cima;
+
+        if (d < 0.30 && w > 10) {
+            // Escalonado: retranqueos, como un rascacielos clasico.
+            int w2 = (int) Math.round(w * Azar.entre(0.50, 0.74));
+            int h2 = (int) Math.round(h * Azar.entre(0.10, 0.24));
+            if (w2 >= 4 && h2 >= 3 && cima - h2 >= 0) {
+                g.fillRect(x + (w - w2) / 2, cima - h2, w2, h2);
+                arriba = cima - h2;
+                if (Azar.probabilidad(0.5) && w2 > 8) {
+                    int w3 = (int) Math.round(w2 * 0.55);
+                    int h3 = (int) Math.round(h2 * 0.7);
+                    if (w3 >= 3 && arriba - h3 >= 0) {
+                        g.fillRect(x + (w - w3) / 2, arriba - h3, w3, h3);
+                        arriba -= h3;
+                    }
+                }
+            }
+        } else if (d < 0.45 && w > 8) {
+            // Aguja.
+            int ha = (int) Math.round(h * Azar.entre(0.10, 0.26));
+            int xa = x + w / 2;
+            for (int i = 0; i < ha && cima - i >= 0; i++) {
+                int anchoAguja = Math.max(1, (int) ((1 - (double) i / ha) * w * 0.16));
+                g.fillRect(xa - anchoAguja / 2, cima - i, anchoAguja, 1);
+            }
+            arriba = Math.max(0, cima - ha);
+        } else if (d < 0.58 && w > 12) {
+            // Cubierta a dos aguas: rompe la monotonia de las azoteas.
+            int ht = (int) Math.round(h * Azar.entre(0.05, 0.12));
+            for (int i = 0; i < ht && cima - i >= 0; i++) {
+                int anchoFila = (int) (w * (1 - (double) i / ht));
+                g.fillRect(x + (w - anchoFila) / 2, cima - i, Math.max(1, anchoFila), 1);
+            }
+            arriba = Math.max(0, cima - ht);
+        } else if (d < 0.72 && w > 10) {
+            // Maquinaria de cubierta: volumenes pequenos y descentrados.
+            int n = Azar.entre(1, 2);
+            for (int i = 0; i < n; i++) {
+                int wc = Math.max(3, (int) Math.round(w * Azar.entre(0.14, 0.30)));
+                int hc = Math.max(2, (int) Math.round(h * Azar.entre(0.02, 0.05)));
+                int xc = x + Azar.entre(2, Math.max(3, w - wc - 2));
+                if (cima - hc >= 0) {
+                    g.fillRect(xc, cima - hc, wc, hc);
+                }
+            }
+        }
+
+        // Mastil con baliza, mas probable en lo cercano.
+        if (Azar.probabilidad(0.22 + 0.20 * cercania)) {
+            int hm = (int) Math.round(h * Azar.entre(0.12, 0.30));
+            if (hm >= 4) {
+                int xm = x + w / 2;
+                int ym = Math.max(0, arriba - hm);
+                if (arriba - ym > 0) {
+                    g.setColor(Destello.mezclar(base, EDIFICIO_CLARO, 0.6f));
+                    g.fillRect(xm, ym, Azar.probabilidad(0.5) ? 1 : 2, arriba - ym);
+                    if (balizas.size() < MAX_BALIZAS && Azar.probabilidad(0.75)) {
+                        balizas.add(new int[]{xm, ym});
+                    }
+                }
+            }
+        }
+        return arriba;
+    }
+
+    /**
+     * Ventanas encendidas.
+     *
+     * Cada edificio tiene su reticula y su caracter: unos con plantas enteras
+     * iluminadas, otros con luces sueltas. Una rejilla uniforme delata al
+     * instante que es un dibujo.
+     */
     private void pintarVentanas(Graphics2D g, int x, int y, int w, int h,
-            int pisoAlto, int minVentana, List<int[]> vivas) {
+            int pisoAlto, int minVentana, List<int[]> vivas,
+            double cercania, float calima) {
+        g.setPaint(null);
         int margen = Math.max(2, w / 8);
-        int vw = Math.max(minVentana, (int) Math.round(w * 0.11));
-        int vh = Math.max(minVentana, (int) Math.round(pisoAlto * 0.45));
-        int paso = vw + Math.max(2, vw);
+        int vw = Math.max(minVentana, (int) Math.round(w * Azar.entre(0.08, 0.14)));
+        int vh = Math.max(minVentana, (int) Math.round(pisoAlto * Azar.entre(0.35, 0.55)));
+        int paso = vw + Math.max(2, (int) (vw * Azar.entre(0.9, 1.6)));
         int columnas = (w - margen * 2) / paso;
         if (columnas < 1) {
             return;
         }
         double densidad = Azar.entre(0.10, 0.42);
+        // Oficinas a medianoche: plantas enteras encendidas.
+        boolean porPlantas = Azar.probabilidad(0.22);
 
         for (int fy = y + pisoAlto; fy < y + h - vh; fy += pisoAlto) {
-            if (Azar.probabilidad(0.45)) {
-                continue; // Planta entera a oscuras.
+            boolean plantaViva = porPlantas && Azar.probabilidad(0.30);
+            if (!plantaViva && Azar.probabilidad(0.45)) {
+                continue;
             }
             for (int c = 0; c < columnas; c++) {
-                if (!Azar.probabilidad(densidad)) {
+                if (!plantaViva && !Azar.probabilidad(densidad)) {
                     continue;
                 }
                 int vx = x + margen + c * paso;
@@ -403,14 +541,23 @@ public class Escenario {
                     continue;
                 }
                 if (vivas.size() < MAX_VENTANAS_VIVAS && Azar.probabilidad(0.02)) {
-                    // Esta no se hornea: parpadeara en vivo sobre la capa.
                     vivas.add(new int[]{vx, fy, vw, vh});
                     continue;
                 }
-                Color luz = Destello.mezclar(LUZ_VENTANA,
-                        Azar.probabilidad(0.25) ? new Color(0xBF, 0xD8, 0xFF) : Color.WHITE,
-                        (float) Azar.entre(0.0, 0.35));
-                g.setColor(Destello.alfa(luz, Azar.entre(120, 235)));
+                // Tres temperaturas: calida de vivienda, fria de oficina y el
+                // azul de una pantalla encendida.
+                Color luz;
+                double t = Azar.entre(0.0, 1.0);
+                if (t < 0.62) {
+                    luz = LUZ_VENTANA;
+                } else if (t < 0.92) {
+                    luz = LUZ_OFICINA;
+                } else {
+                    luz = LUZ_PANTALLA;
+                }
+                luz = Destello.mezclar(luz, CALIMA_CIUDAD, calima * 0.6f);
+                int op = (int) (Azar.entre(120, 235) * (0.55 + 0.45 * cercania));
+                g.setColor(Destello.alfa(luz, op));
                 g.fillRect(vx, fy, vw, vh);
             }
         }
