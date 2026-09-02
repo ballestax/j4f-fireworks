@@ -744,7 +744,22 @@ public class Escenario {
                     new Point2D.Float(0, cima), new Point2D.Float(0, baseY),
                     new float[]{0f, 0.62f, 1f},
                     new Color[]{base, base, pie}));
-            g.fillRect(x, cima, w, h);
+
+            // Forma del cuerpo. No todos los edificios son cajas: en una
+            // ciudad como Hong Kong abundan las torres que se afilan al subir
+            // y las que retranquean a media altura. En la linea del cielo esa
+            // diferencia se nota mas que cualquier detalle de fachada.
+            double merma = 0;
+            int alturaRetranqueo = 0;
+            double mermaRetranqueo = 0;
+            double forma = Azar.entre(0.0, 1.0);
+            if (forma < 0.28 && w > 10) {
+                merma = Azar.entre(0.14, 0.38);
+            } else if (forma < 0.46 && w > 14 && h > 40) {
+                alturaRetranqueo = (int) Math.round(h * Azar.entre(0.35, 0.65));
+                mermaRetranqueo = Azar.entre(0.16, 0.34);
+            }
+            rellenarCuerpo(g, x, cima, w, h, merma, alturaRetranqueo, mermaRetranqueo);
 
             // Cara lateral: un edificio visto de esquina ensena dos caras, y
             // la que no mira al observador va mas oscura. Es lo que le da
@@ -759,6 +774,11 @@ public class Escenario {
                 int xl = ladoDerecho ? x + w - anchoLado : x;
                 g.setColor(Destello.mezclar(base, EDIFICIO_OSCURO, 0.42f));
                 g.fillRect(xl, cima, anchoLado, h);
+                // La cara de lado lleva sus propias ventanas, comprimidas y
+                // mas apagadas. Sin ellas la banda oscura se lee como una
+                // raya pintada encima y no como otra cara del edificio: eso
+                // es lo que hacia que el volumen no convenciera.
+                pintarVentanasLado(g, xl, cima, anchoLado, h, pisoAlto, cercania, calima);
                 // Arista viva entre las dos caras: sin ella el cambio de tono
                 // se lee como una mancha y no como un canto.
                 g.setColor(Destello.alfa(
@@ -791,6 +811,54 @@ public class Escenario {
                     ? (int) Math.round(w * Azar.entre(0.45, 0.80))
                     : w + (int) Math.round(Azar.entre(-2.0, 4.0 + 4.0 * cercania));
         }
+    }
+
+    /**
+     * Rellena el cuerpo del edificio con su forma.
+     *
+     * Un poligono en vez de un rectangulo. Es lo unico que separa una torre
+     * afilada de una caja, y a esta distancia esa silueta pesa mas que
+     * cualquier detalle de la fachada.
+     */
+    private void rellenarCuerpo(Graphics2D g, int x, int cima, int w, int h,
+            double merma, int alturaRetranqueo, double mermaRetranqueo) {
+        if (merma <= 0 && alturaRetranqueo <= 0) {
+            g.fillRect(x, cima, w, h);
+            return;
+        }
+        java.awt.Polygon cuerpo = new java.awt.Polygon();
+        int base = cima + h;
+        cuerpo.addPoint(x, base);
+        if (alturaRetranqueo > 0) {
+            int yr = base - alturaRetranqueo;
+            int s = (int) Math.round(w * mermaRetranqueo * 0.5);
+            cuerpo.addPoint(x, yr);
+            cuerpo.addPoint(x + s, yr);
+            cuerpo.addPoint(x + s, cima);
+            cuerpo.addPoint(x + w - s, cima);
+            cuerpo.addPoint(x + w - s, yr);
+            cuerpo.addPoint(x + w, yr);
+        } else {
+            int s = (int) Math.round(w * merma * 0.5);
+            cuerpo.addPoint(x + s, cima);
+            cuerpo.addPoint(x + w - s, cima);
+        }
+        cuerpo.addPoint(x + w, base);
+        g.fill(cuerpo);
+    }
+
+    /** Cuanto hay que meterse por cada lado a la altura dada. */
+    private static int sangriaEn(int cima, int h, int w, int y,
+            double merma, int alturaRetranqueo, double mermaRetranqueo) {
+        if (alturaRetranqueo > 0) {
+            int yr = cima + h - alturaRetranqueo;
+            return y < yr ? (int) Math.round(w * mermaRetranqueo * 0.5) : 0;
+        }
+        if (merma <= 0) {
+            return 0;
+        }
+        double f = (double) (y - cima) / Math.max(1, h);
+        return (int) Math.round(w * merma * 0.5 * (1 - f));
     }
 
     /**
@@ -892,15 +960,15 @@ public class Escenario {
             if (d < 0.63) {
                 return TIPO_CRISTAL;
             }
-            return d < 0.92 ? TIPO_RESIDENCIAL : TIPO_OSCURO;
+            return d < 0.96 ? TIPO_RESIDENCIAL : TIPO_OSCURO;
         }
-        if (d < 0.42) {
+        if (d < 0.46) {
             return TIPO_RESIDENCIAL;
         }
         if (d < 0.62) {
             return TIPO_OFICINAS;
         }
-        return d < 0.70 ? TIPO_CRISTAL : TIPO_OSCURO;
+        return d < 0.84 ? TIPO_CRISTAL : TIPO_OSCURO;
     }
 
     /**
@@ -948,12 +1016,14 @@ public class Escenario {
             return;
         }
         // La vivienda enciende menos: no todo el mundo esta en casa despierto.
-        double densidad = oficinas ? Azar.entre(0.14, 0.40) : Azar.entre(0.06, 0.20);
+        // Mas encendida que antes. Una ciudad grande de noche esta iluminada,
+        // no apagada con luces sueltas.
+        double densidad = oficinas ? Azar.entre(0.24, 0.56) : Azar.entre(0.14, 0.34);
         boolean porPlantas = oficinas && Azar.probabilidad(0.26);
 
         for (int fy = y + alturaPiso; fy < y + h - vh; fy += alturaPiso) {
             boolean plantaViva = porPlantas && Azar.probabilidad(0.30);
-            if (!plantaViva && Azar.probabilidad(oficinas ? 0.42 : 0.58)) {
+            if (!plantaViva && Azar.probabilidad(oficinas ? 0.24 : 0.40)) {
                 continue;
             }
             for (int c = 0; c < columnas; c++) {
@@ -1005,12 +1075,47 @@ public class Escenario {
         }
     }
 
+    /**
+     * Ventanas de la cara lateral.
+     *
+     * En escorzo: columnas mas juntas y luz mas floja, porque esa cara recibe
+     * menos y se ve de canto. Es lo que convierte la banda oscura en una cara
+     * de verdad.
+     */
+    private void pintarVentanasLado(Graphics2D g, int x, int y, int w, int h,
+            int pisoAlto, double cercania, float calima) {
+        if (w < 3) {
+            return;
+        }
+        int vw = Math.max(1, (int) Math.round(w * 0.16));
+        int paso = vw + Math.max(1, vw);
+        int columnas = Math.max(1, (w - 2) / paso);
+        int vh = Math.max(1, (int) Math.round(pisoAlto * 0.45));
+        for (int fy = y + pisoAlto; fy < y + h - vh; fy += pisoAlto) {
+            if (Azar.probabilidad(0.62)) {
+                continue;
+            }
+            for (int c = 0; c < columnas; c++) {
+                if (!Azar.probabilidad(0.30)) {
+                    continue;
+                }
+                int vx = x + 1 + c * paso;
+                if (vx + vw > x + w - 1) {
+                    continue;
+                }
+                Color luz = colorVentana(Azar.probabilidad(0.55), cercania, calima);
+                g.setColor(Destello.alfa(luz, (int) (luz.getAlpha() * 0.55)));
+                g.fillRect(vx, fy, vw, vh);
+            }
+        }
+    }
+
     /** Edificio casi apagado: cuatro luces sueltas y nada mas. */
     private void pintarLucesSueltas(Graphics2D g, int x, int y, int w, int h,
             int pisoAlto, double cercania, float calima) {
         // Una o dos luces, rara vez tres. Un edificio a oscuras con cinco
         // ventanas encendidas no esta a oscuras.
-        int n = Azar.probabilidad(0.30) ? 0 : Azar.entre(1, 3);
+        int n = Azar.probabilidad(0.12) ? 0 : Azar.entre(2, 6);
         int vw = Math.max(1, (int) Math.round(w * 0.09));
         int vh = Math.max(1, (int) Math.round(pisoAlto * 0.9));
         for (int i = 0; i < n; i++) {
