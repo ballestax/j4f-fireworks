@@ -91,6 +91,19 @@ public class Fireworks extends JPanel {
     /** Reloj de 24 horas abajo a la derecha. */
     private volatile boolean mostrarHora;
     /**
+     * Modo emision: escena limpia para un directo.
+     *
+     * Sin ayuda, sin rotulo de entrada y sin avisos, porque en una captura de
+     * pantalla todo eso queda pegado en el video. Ademas rota de genero sola:
+     * un directo de veinticuatro horas con un unico ambiente cansa, y nadie va
+     * a estar pulsando la tecla al otro lado.
+     */
+    private volatile boolean modoEmision;
+    /** Cada cuanto cambia de genero cuando emite. */
+    private static final double MINUTOS_POR_GENERO = 9.0;
+    private double desdeCambioGenero;
+
+    /**
      * Cuenta atras del indicador de volumen: 1 recien tocado, 0 oculto.
      * Lo pone el EDT al pulsar una tecla y lo descuenta el hilo de animacion,
      * de ahi el volatile.
@@ -241,6 +254,20 @@ public class Fireworks extends JPanel {
         despertarAyuda();
     }
 
+    /** Activa el modo emision: escena limpia y rotacion de genero. */
+    public void setModoEmision(boolean valor) {
+        modoEmision = valor;
+        if (valor) {
+            intro = 0;
+            avisoVolumen = 0;
+            desdeCambioGenero = 0;
+        }
+    }
+
+    public boolean isModoEmision() {
+        return modoEmision;
+    }
+
     public void despertarAyuda() {
         desdeInteraccion = 0;
     }
@@ -370,6 +397,13 @@ public class Fireworks extends JPanel {
 
         if (resplandor > 0) {
             resplandor = Math.max(0, resplandor - dt / DUR_RESPLANDOR);
+        }
+        if (modoEmision) {
+            desdeCambioGenero += dt;
+            if (desdeCambioGenero >= MINUTOS_POR_GENERO * 60.0) {
+                desdeCambioGenero = 0;
+                musica.siguienteGenero();
+            }
         }
         if (avisoVolumen > 0) {
             avisoVolumen = Math.max(0, avisoVolumen - dt / DUR_AVISO_VOLUMEN);
@@ -587,6 +621,14 @@ public class Fireworks extends JPanel {
     // ------------------------------------------------------------------
 
     private void pintarInterfaz(Graphics2D g, int w, int h) {
+        if (modoEmision) {
+            // En emision solo se permite el reloj, y solo si se pide a mano.
+            pintarHora(g, w, h);
+            if (animacion.isPausada()) {
+                pintarPausa(g, w, h);
+            }
+            return;
+        }
         pintarTitulo(g, w, h);
         pintarAyuda(g, w, h);
         pintarVolumen(g, w, h);

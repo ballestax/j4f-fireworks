@@ -38,7 +38,16 @@ public class J4F {
     /** Geometria de la ventana antes de pasar a pantalla completa. */
     private static Rectangle geometriaPrevia;
 
+    /** Arranque pensado para emitir: pantalla completa, limpio y sin tocar nada. */
+    private static boolean modoEmision;
+
     public static void main(String[] args) {
+        for (int i = 0; i < args.length; i++) {
+            String a = args[i].toLowerCase();
+            if (a.equals("--emision") || a.equals("-e") || a.equals("--stream")) {
+                modoEmision = true;
+            }
+        }
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
@@ -73,6 +82,12 @@ public class J4F {
         panel.requestFocusInWindow();
         panel.iniciar();
         panel.iniciarMusica();
+
+        if (modoEmision) {
+            // Escena limpia para el capturador: nada de rotulos ni de ventana.
+            panel.setModoEmision(true);
+            alternarPantallaCompleta();
+        }
     }
 
     // ------------------------------------------------------------------
