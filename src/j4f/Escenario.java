@@ -545,8 +545,11 @@ public class Escenario {
         float calima = (float) (0.34 * (1 - cercania));
         int baseY = yHorizonte + (int) Math.round(alto * 0.004 * (1 - cercania));
 
-        int pisoAlto = Math.max(3, (int) Math.round(alto * 0.014));
-        int minVentana = Math.max(1, (int) Math.round(alto * 0.005));
+        // Altura de planta. Con 0.014 un edificio de doscientos pixeles salia
+        // con trece plantas: eso no es una torre, es un bloque de pisos. A la
+        // mitad se leen veinticinco, que es lo que el ojo espera de una ciudad.
+        int pisoAlto = Math.max(2, (int) Math.round(alto * 0.0072));
+        int minVentana = 1;
 
         int x = -(int) Math.round(Azar.entre(0.0, anchoMax));
         while (x < ancho) {
@@ -555,6 +558,11 @@ public class Escenario {
                 w = 5;
             }
             int h = (int) Math.round(Azar.entre(altMin, altMax));
+            // Una de cada doce es un hito. Un perfil sin torres que sobresalgan
+            // se lee como una tapia almenada, no como una ciudad.
+            if (Azar.probabilidad(0.085)) {
+                h = (int) Math.round(h * Azar.entre(1.45, 2.10));
+            }
             if (h < 8) {
                 h = 8;
             }
@@ -593,7 +601,11 @@ public class Escenario {
                 pintarVentanas(g, x, cima, w, h, pisoAlto, minVentana,
                         vivas, cercania, calima);
             }
-            x += w + (int) Math.round(Azar.entre(-2.0, 4.0 + 4.0 * cercania));
+            // A veces el siguiente se mete por delante: en una ciudad los
+            // edificios se tapan entre si, no van en fila india.
+            x += Azar.probabilidad(0.30)
+                    ? (int) Math.round(w * Azar.entre(0.45, 0.80))
+                    : w + (int) Math.round(Azar.entre(-2.0, 4.0 + 4.0 * cercania));
         }
     }
 
@@ -687,10 +699,13 @@ public class Escenario {
             int pisoAlto, int minVentana, List<int[]> vivas,
             double cercania, float calima) {
         g.setPaint(null);
-        int margen = Math.max(2, w / 8);
-        int vw = Math.max(minVentana, (int) Math.round(w * Azar.entre(0.08, 0.14)));
-        int vh = Math.max(minVentana, (int) Math.round(pisoAlto * Azar.entre(0.35, 0.55)));
-        int paso = vw + Math.max(2, (int) (vw * Azar.entre(0.9, 1.6)));
+        int margen = Math.max(1, w / 12);
+        // Ventanas pequenas y muchas. En una foto nocturna el edificio es una
+        // masa negra y todo el dibujo lo hacen las ventanas; pocas y grandes
+        // se leen como agujeros, no como una fachada.
+        int vw = Math.max(minVentana, (int) Math.round(w * Azar.entre(0.040, 0.075)));
+        int vh = Math.max(minVentana, (int) Math.round(pisoAlto * Azar.entre(0.40, 0.60)));
+        int paso = vw + Math.max(1, (int) (vw * Azar.entre(0.75, 1.20)));
         int columnas = (w - margen * 2) / paso;
         if (columnas < 1) {
             return;
