@@ -355,6 +355,24 @@ public class Escenario {
     /** Cuanto se agranda el disco antes de reducirlo, para suavizar bordes. */
     private static final int SUPERMUESTREO_LUNA = 4;
 
+    /**
+     * Desenfoque de los mares, en tanto por uno del radio del disco.
+     *
+     * Generoso: un mar es una llanura de basalto que se funde con las tierras
+     * altas a lo largo de decenas de kilometros. Con el contorno limpio se
+     * leia como una mancha pegada encima del disco.
+     */
+    private static final double DESENFOQUE_MARES = 0.022;
+
+    /**
+     * Desenfoque del relieve, en tanto por uno del radio del disco.
+     *
+     * Mucho menor que el de los mares, y por una razon concreta: los crateres
+     * miden entre 0.007 y 0.027 del radio, asi que con el sigma de los mares
+     * no se suavizan, se borran. Con este se les quita el filo y siguen ahi.
+     */
+    private static final double DESENFOQUE_RELIEVE = 0.007;
+
     /** Cordilleras al fondo. Dos, para que haya lejania entre ellas. */
     private static final int CORDILLERAS = 2;
 
@@ -464,6 +482,51 @@ public class Escenario {
     }
 
     /**
+     * Desenfoque gaussiano sobre una capa con transparencia.
+     *
+     * Antes de convolucionar se pasa a alfa premultiplicado. Sin eso, el color
+     * de cada pixel se promedia con el negro de los transparentes de al lado y
+     * toda mancha sale con un cerco sucio: es el fallo clasico de desenfocar
+     * una imagen ARGB tal cual.
+     *
+     * Dos pasadas de una dimension en lugar de una de dos. La gaussiana es
+     * separable, asi que sale identico con 2n multiplicaciones por pixel en
+     * vez de n al cuadrado.
+     *
+     * En los bordes se deja el pixel original (EDGE_NO_OP) en vez de rellenar
+     * con cero: rellenando, el anillo exterior se vaciaria y comeria el limbo.
+     */
+    private static BufferedImage desenfocar(BufferedImage src, double sigma) {
+        if (sigma <= 0.05) {
+            return src;
+        }
+        int radio = (int) Math.ceil(sigma * 3);
+        int n = radio * 2 + 1;
+        float[] k = new float[n];
+        double suma = 0;
+        for (int i = 0; i < n; i++) {
+            double x = i - radio;
+            k[i] = (float) Math.exp(-(x * x) / (2 * sigma * sigma));
+            suma += k[i];
+        }
+        for (int i = 0; i < n; i++) {
+            k[i] /= (float) suma;
+        }
+        BufferedImage pre = new BufferedImage(src.getWidth(), src.getHeight(),
+                BufferedImage.TYPE_INT_ARGB_PRE);
+        Graphics2D gp = pre.createGraphics();
+        gp.drawImage(src, 0, 0, null);
+        gp.dispose();
+        java.awt.image.ConvolveOp horizontal = new java.awt.image.ConvolveOp(
+                new java.awt.image.Kernel(n, 1, k),
+                java.awt.image.ConvolveOp.EDGE_NO_OP, null);
+        java.awt.image.ConvolveOp vertical = new java.awt.image.ConvolveOp(
+                new java.awt.image.Kernel(1, n, k),
+                java.awt.image.ConvolveOp.EDGE_NO_OP, null);
+        return vertical.filter(horizontal.filter(pre, null), null);
+    }
+
+    /**
      * Un crater: sombra a un lado, reborde iluminado al otro y suelo.
      *
      * Los tres tonos se mantienen cerca del gris de la superficie. Antes la
@@ -507,6 +570,10 @@ public class Escenario {
         // detecta enseguida y el relieve se deshace.
         double luzX = 0.55;
         double luzY = -0.62;
+        // En proporcion al radio: el desenfoque tiene que valer lo mismo a
+        // cualquier tamano de disco, no una cantidad fija de pixeles.
+        double sigmaMares = r * DESENFOQUE_MARES;
+        double sigmaRelieve = r * DESENFOQUE_RELIEVE;
 
         Shape disco = new java.awt.geom.Ellipse2D.Double(c - r, c - r, r * 2, r * 2);
         g.setClip(disco);
@@ -527,6 +594,15 @@ public class Escenario {
         // se pintaran los lobulos directamente, donde se solapan el alfa se
         // acumularia y se verian anillos oscuros dentro del mar, justo lo que
         // delata que aquello son elipses pegadas y no una mancha de basalto.
+        //
+        // Todos los mares van a una misma capa para desenfocarla de una vez.
+        // El basalto no tiene filo: el borde nitido era lo que hacia que se
+        // leyeran como manchas pegadas encima del disco en vez de como parte
+        // de la superficie.
+        BufferedImage mares = new BufferedImage(tam, tam, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D gms = mares.createGraphics();
+        gms.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON);
         for (int i = 0; i < MARES_LUNA.length; i++) {
             double[] m = MARES_LUNA[i];
             double mx = c + m[0] * r;
@@ -560,11 +636,13 @@ public class Escenario {
                             mx + dx - fx, my + dy - fy, fx * 2, fy * 2));
                 }
                 gm.dispose();
-                g.setComposite(Destello.mezcla(opacidades[cap] * m[4]));
-                g.drawImage(mar, 0, 0, null);
+                gms.setComposite(Destello.mezcla(opacidades[cap] * m[4]));
+                gms.drawImage(mar, 0, 0, null);
             }
-            g.setComposite(AlphaComposite.SrcOver);
+            gms.setComposite(AlphaComposite.SrcOver);
         }
+        gms.dispose();
+        g.drawImage(desenfocar(mares, sigmaMares), 0, 0, null);
 
         // Crateres.
         //
@@ -642,7 +720,10 @@ public class Escenario {
                     (int) (tx + Math.cos(ang) * largo), (int) (ty + Math.sin(ang) * largo));
         }
         gr.dispose();
-        g.drawImage(relieve, 0, 0, null);
+        // Un crater no tiene filo: lo que se ve de el es un cambio de
+        // sombreado, no un dibujo. De paso difumina los rayos de Tycho, que
+        // trazados a linea limpia parecian una arana encima del disco.
+        g.drawImage(desenfocar(relieve, sigmaRelieve), 0, 0, null);
 
         // Oscurecimiento del limbo: el borde del disco cae, y eso es lo que
         // convierte un circulo en una esfera.
