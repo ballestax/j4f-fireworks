@@ -153,6 +153,12 @@ public class J4F {
         for (int i = 0; i < teclasBajar.length; i++) {
             atajo(teclasBajar[i], "bajarVolumen" + i, bajar);
         }
+        atajo("C", "colorCiudad", new Runnable() {
+            @Override
+            public void run() {
+                panel.alternarColorCiudad();
+            }
+        });
         atajo("H", "hora", new Runnable() {
             @Override
             public void run() {

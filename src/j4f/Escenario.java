@@ -95,6 +95,24 @@ public class Escenario {
     /** Azul de una pantalla encendida a deshora. */
     private static final Color LUZ_PANTALLA = new Color(0x7E, 0xA8, 0xE8);
 
+    /**
+     * Paleta de fachadas para el modo en color.
+     *
+     * Por defecto los edificios son masa casi negra, que es lo realista. Con
+     * esta opcion cada uno toma un tono propio y la profundidad la da tambien
+     * el color y no solo el valor. Son tonos nocturnos y no colores planos: la
+     * escena tiene que seguir siendo de noche.
+     */
+    private static final Color[] PALETA_FACHADAS = {
+        new Color(0x14, 0x2E, 0x3C),   // azul petroleo
+        new Color(0x24, 0x18, 0x3E),   // violeta profundo
+        new Color(0x0E, 0x2E, 0x2A),   // verde abeto
+        new Color(0x36, 0x1C, 0x2A),   // ciruela
+        new Color(0x32, 0x26, 0x14),   // ambar apagado
+        new Color(0x1A, 0x24, 0x44),   // indigo
+        new Color(0x30, 0x18, 0x18)    // teja oscura
+    };
+
     private static final Color EDIFICIO_OSCURO = new Color(0x04, 0x06, 0x0F);
     private static final Color EDIFICIO_CLARO = new Color(0x0A, 0x10, 0x24);
     private static final Color LUZ_VENTANA = new Color(0xFF, 0xD9, 0xA0);
@@ -109,6 +127,8 @@ public class Escenario {
     private int yHorizonte;
     /** Por encima de esta altura un edificio cuenta como torre. */
     private int alturaTorre;
+    /** Si las fachadas llevan color propio en vez de ser casi negras. */
+    private boolean fachadasEnColor;
     private double t;
 
     // Jirones de niebla: posicion, tamano y deriva de cada uno.
@@ -203,6 +223,30 @@ public class Escenario {
         if (dt > 0) {
             t += dt;
         }
+    }
+
+    /**
+     * Conmuta las fachadas en color.
+     *
+     * Rehornea la silueta y el agua, porque el reflejo sale de la silueta.
+     * Cuesta lo mismo que un redimensionado, unas decimas de segundo, y solo
+     * al pulsarlo.
+     */
+    public void setFachadasEnColor(boolean valor) {
+        if (fachadasEnColor == valor) {
+            return;
+        }
+        fachadasEnColor = valor;
+        if (ancho > 0 && alto > 0) {
+            generarNiebla();
+            skyline = crearSkyline();
+            incrustarVeloNiebla();
+            aguaBase = crearAgua();
+        }
+    }
+
+    public boolean isFachadasEnColor() {
+        return fachadasEnColor;
     }
 
     public double getHorizonte() {
@@ -574,13 +618,24 @@ public class Escenario {
             }
             int cima = baseY - h;
 
-            Color base = Destello.mezclar(EDIFICIO_OSCURO, EDIFICIO_CLARO,
-                    (float) Azar.entre(0.0, 1.0));
-            base = Destello.mezclar(base, CALIMA_CIUDAD, calima);
-            if (capa == CAPAS_CIUDAD - 1) {
-                // La primera fila se recorta casi en negro contra lo de atras:
-                // sin ese contraste las tres capas se funden en una mancha.
-                base = Destello.mezclar(base, EDIFICIO_OSCURO, 0.45f);
+            Color base;
+            if (fachadasEnColor) {
+                // El color se apaga con la distancia, no solo se aclara: es lo
+                // que hace la atmosfera de verdad, y evita que las tres capas
+                // parezcan tres filas de cromos.
+                Color tono = PALETA_FACHADAS[Azar.entre(0, PALETA_FACHADAS.length - 1)];
+                base = Destello.mezclar(EDIFICIO_OSCURO, tono,
+                        (float) (0.35 + 0.55 * cercania));
+                base = Destello.mezclar(base, CALIMA_CIUDAD, calima * 0.75f);
+            } else {
+                base = Destello.mezclar(EDIFICIO_OSCURO, EDIFICIO_CLARO,
+                        (float) Azar.entre(0.0, 1.0));
+                base = Destello.mezclar(base, CALIMA_CIUDAD, calima);
+                if (capa == CAPAS_CIUDAD - 1) {
+                    // La primera fila se recorta casi en negro contra lo de
+                    // atras: sin ese contraste las capas se funden en una mancha.
+                    base = Destello.mezclar(base, EDIFICIO_OSCURO, 0.45f);
+                }
             }
             // Degradado vertical: el pie recoge el resplandor de la calle y la
             // coronacion queda limpia contra el cielo. Plano se ve a carton.

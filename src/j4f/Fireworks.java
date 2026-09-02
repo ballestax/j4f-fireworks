@@ -159,6 +159,25 @@ public class Fireworks extends JPanel {
         despertarAyuda();
     }
 
+    /**
+     * Alterna las fachadas en color.
+     *
+     * Rehornea la silueta, asi que se hace en un hilo aparte: en el hilo de
+     * animacion daria un tiron de varias decimas justo al pulsar.
+     */
+    public void alternarColorCiudad() {
+        final boolean valor = !escenario.isFachadasEnColor();
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                escenario.setFachadasEnColor(valor);
+            }
+        }, "ColorCiudad");
+        t.setDaemon(true);
+        t.start();
+        mostrarAviso(valor ? "CIUDAD EN COLOR" : "CIUDAD EN SOMBRA");
+    }
+
     /** Muestra u oculta el reloj. */
     public void alternarHora() {
         mostrarHora = !mostrarHora;
@@ -704,9 +723,9 @@ public class Fireworks extends JPanel {
         }
         g.setFont(fuenteAyuda);
         FontMetrics fm = g.getFontMetrics();
-        String[] teclas = {"F", "ESC", "ESPACIO", "T", "G", "M", "+/-", "H", "P", "CLIC"};
+        String[] teclas = {"F", "ESC", "ESPACIO", "T", "G", "M", "+/-", "C", "H", "P", "CLIC"};
         String[] textos = {"pantalla completa", "salir", "lanzar", "traca",
-            "genero", "musica", "volumen", "hora", "pausa", "apuntar"};
+            "genero", "musica", "volumen", "color", "hora", "pausa", "apuntar"};
 
         int margen = Math.max(18, w / 50);
         int ancho = Math.max(80, w - margen * 2 - anchoHora(g));
