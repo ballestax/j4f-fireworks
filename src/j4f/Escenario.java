@@ -37,7 +37,7 @@ public class Escenario {
     private static final int MAX_BALIZAS = 4;
     private static final int NUM_BRILLOS_AGUA = 5;
     /** Jirones de niebla que se arrastran entre los edificios. */
-    private static final int NUM_JIRONES = 10;
+    private static final int NUM_JIRONES = 18;
 
     /** Tonos posibles de las estrellas: blanco, azulado y calido. */
     private static final Color[] TONOS_ESTRELLA = {
@@ -107,6 +107,8 @@ public class Escenario {
     private int alto;
     private double horizonte;
     private int yHorizonte;
+    /** Por encima de esta altura un edificio cuenta como torre. */
+    private int alturaTorre;
     private double t;
 
     // Jirones de niebla: posicion, tamano y deriva de cada uno.
@@ -187,6 +189,7 @@ public class Escenario {
         if (yHorizonte > alto - 1) {
             yHorizonte = alto - 1;
         }
+        alturaTorre = (int) Math.round(alto * 0.14);
         generarEstrellas();
         generarBrillosAgua();
         generarNiebla();
@@ -688,35 +691,81 @@ public class Escenario {
         return arriba;
     }
 
+    /** Torre de oficinas: reticula apretada y luz fria. */
+    private static final int TIPO_OFICINAS = 0;
+    /** Vivienda: ventanas mayores, calidas y desordenadas. */
+    private static final int TIPO_RESIDENCIAL = 1;
+    /** Torre de cristal: bandas horizontales continuas de acristalamiento. */
+    private static final int TIPO_CRISTAL = 2;
+    /** Edificio a oscuras: casi sin luces, solo silueta. */
+    private static final int TIPO_OSCURO = 3;
+
+    /** Elige tipo de edificio. Los mas altos tienden a ser torres. */
+    private int tipoEdificio(int h, double cercania) {
+        boolean alto = h > alturaTorre;
+        double d = Azar.entre(0.0, 1.0);
+        if (alto) {
+            if (d < 0.45) {
+                return TIPO_OFICINAS;
+            }
+            if (d < 0.63) {
+                return TIPO_CRISTAL;
+            }
+            return d < 0.92 ? TIPO_RESIDENCIAL : TIPO_OSCURO;
+        }
+        if (d < 0.42) {
+            return TIPO_RESIDENCIAL;
+        }
+        if (d < 0.62) {
+            return TIPO_OFICINAS;
+        }
+        return d < 0.70 ? TIPO_CRISTAL : TIPO_OSCURO;
+    }
+
     /**
      * Ventanas encendidas.
      *
-     * Cada edificio tiene su reticula y su caracter: unos con plantas enteras
-     * iluminadas, otros con luces sueltas. Una rejilla uniforme delata al
-     * instante que es un dibujo.
+     * Cuatro tipos de edificio con tratamientos distintos. Aplicar la misma
+     * reticula a todos los dejaba a todos iguales: una masa oscura con el
+     * mismo picoteo, y algunos ademas atiborrados. Una ciudad de verdad mezcla
+     * torres de oficinas, viviendas, fachadas de cristal y edificios que a esa
+     * hora estan apagados, y esa mezcla es la que se lee como ciudad.
      */
     private void pintarVentanas(Graphics2D g, int x, int y, int w, int h,
             int pisoAlto, int minVentana, List<int[]> vivas,
             double cercania, float calima) {
         g.setPaint(null);
+        int tipo = tipoEdificio(h, cercania);
+        if (tipo == TIPO_OSCURO) {
+            // Unas pocas luces sueltas y poco mas: tambien hace falta que
+            // algunos edificios esten a oscuras para que los demas destaquen.
+            pintarLucesSueltas(g, x, y, w, h, pisoAlto, cercania, calima);
+            return;
+        }
+        if (tipo == TIPO_CRISTAL) {
+            pintarBandasCristal(g, x, y, w, h, pisoAlto, cercania, calima);
+            return;
+        }
+
+        boolean oficinas = tipo == TIPO_OFICINAS;
         int margen = Math.max(1, w / 12);
-        // Ventanas pequenas y muchas. En una foto nocturna el edificio es una
-        // masa negra y todo el dibujo lo hacen las ventanas; pocas y grandes
-        // se leen como agujeros, no como una fachada.
-        int vw = Math.max(minVentana, (int) Math.round(w * Azar.entre(0.040, 0.075)));
-        int vh = Math.max(minVentana, (int) Math.round(pisoAlto * Azar.entre(0.40, 0.60)));
-        int paso = vw + Math.max(1, (int) (vw * Azar.entre(0.75, 1.20)));
+        int vw = Math.max(minVentana, (int) Math.round(w * (oficinas
+                ? Azar.entre(0.040, 0.070) : Azar.entre(0.090, 0.150))));
+        int paso = vw + Math.max(1, (int) (vw * (oficinas
+                ? Azar.entre(0.70, 1.05) : Azar.entre(1.10, 1.90))));
+        int alturaPiso = oficinas ? pisoAlto : (int) Math.round(pisoAlto * 1.5);
+        int vh = Math.max(minVentana, (int) Math.round(alturaPiso * Azar.entre(0.40, 0.60)));
         int columnas = (w - margen * 2) / paso;
         if (columnas < 1) {
             return;
         }
-        double densidad = Azar.entre(0.10, 0.42);
-        // Oficinas a medianoche: plantas enteras encendidas.
-        boolean porPlantas = Azar.probabilidad(0.22);
+        // La vivienda enciende menos: no todo el mundo esta en casa despierto.
+        double densidad = oficinas ? Azar.entre(0.14, 0.40) : Azar.entre(0.06, 0.20);
+        boolean porPlantas = oficinas && Azar.probabilidad(0.26);
 
-        for (int fy = y + pisoAlto; fy < y + h - vh; fy += pisoAlto) {
+        for (int fy = y + alturaPiso; fy < y + h - vh; fy += alturaPiso) {
             boolean plantaViva = porPlantas && Azar.probabilidad(0.30);
-            if (!plantaViva && Azar.probabilidad(0.45)) {
+            if (!plantaViva && Azar.probabilidad(oficinas ? 0.42 : 0.58)) {
                 continue;
             }
             for (int c = 0; c < columnas; c++) {
@@ -731,23 +780,75 @@ public class Escenario {
                     vivas.add(new int[]{vx, fy, vw, vh});
                     continue;
                 }
-                // Tres temperaturas: calida de vivienda, fria de oficina y el
-                // azul de una pantalla encendida.
-                Color luz;
-                double t = Azar.entre(0.0, 1.0);
-                if (t < 0.62) {
-                    luz = LUZ_VENTANA;
-                } else if (t < 0.92) {
-                    luz = LUZ_OFICINA;
-                } else {
-                    luz = LUZ_PANTALLA;
-                }
-                luz = Destello.mezclar(luz, CALIMA_CIUDAD, calima * 0.6f);
-                int op = (int) (Azar.entre(120, 235) * (0.55 + 0.45 * cercania));
-                g.setColor(Destello.alfa(luz, op));
+                g.setColor(colorVentana(oficinas, cercania, calima));
                 g.fillRect(vx, fy, vw, vh);
             }
         }
+    }
+
+    /**
+     * Torre de cristal: bandas horizontales de acristalamiento continuo.
+     *
+     * Es lo que distingue a un edificio moderno de uno de ventanas picadas, y
+     * a distancia la diferencia se nota mas que ningun otro detalle.
+     */
+    private void pintarBandasCristal(Graphics2D g, int x, int y, int w, int h,
+            int pisoAlto, double cercania, float calima) {
+        int margen = Math.max(1, w / 14);
+        int alturaBanda = Math.max(2, (int) Math.round(pisoAlto * 1.4));
+        int grosor = Math.max(1, (int) Math.round(alturaBanda * 0.42));
+        for (int fy = y + alturaBanda; fy < y + h - grosor; fy += alturaBanda) {
+            if (Azar.probabilidad(0.46)) {
+                continue;   // planta sin luz
+            }
+            // La banda no llega siempre de lado a lado: se interrumpe.
+            int desde = x + margen + (Azar.probabilidad(0.35)
+                    ? (int) Math.round(w * Azar.entre(0.0, 0.35)) : 0);
+            int hasta = x + w - margen - (Azar.probabilidad(0.35)
+                    ? (int) Math.round(w * Azar.entre(0.0, 0.35)) : 0);
+            if (hasta - desde < 2) {
+                continue;
+            }
+            // A media opacidad: encendidas a tope, las bandas se comian la
+            // escena y la ciudad parecia un muro de persianas.
+            Color c = colorVentana(true, cercania, calima * 1.2f);
+            g.setColor(Destello.alfa(c, (int) (c.getAlpha() * 0.62)));
+            g.fillRect(desde, fy, hasta - desde, grosor);
+        }
+    }
+
+    /** Edificio casi apagado: cuatro luces sueltas y nada mas. */
+    private void pintarLucesSueltas(Graphics2D g, int x, int y, int w, int h,
+            int pisoAlto, double cercania, float calima) {
+        int n = Azar.entre(0, 5);
+        int vw = Math.max(1, (int) Math.round(w * 0.09));
+        int vh = Math.max(1, (int) Math.round(pisoAlto * 0.9));
+        for (int i = 0; i < n; i++) {
+            int vx = x + Azar.entre(2, Math.max(3, w - vw - 2));
+            int vy = y + Azar.entre(pisoAlto, Math.max(pisoAlto + 1, h - vh));
+            g.setColor(colorVentana(Azar.probabilidad(0.3), cercania, calima));
+            g.fillRect(vx, vy, vw, vh);
+        }
+    }
+
+    /**
+     * Color de una ventana encendida.
+     *
+     * Tres temperaturas: calida de vivienda, fria de oficina y el azul de una
+     * pantalla a deshora. Las oficinas tiran a fria y las viviendas a calida,
+     * que es lo que de verdad se ve desde fuera.
+     */
+    private Color colorVentana(boolean oficinas, double cercania, float calima) {
+        double t = Azar.entre(0.0, 1.0);
+        Color luz;
+        if (oficinas) {
+            luz = t < 0.62 ? LUZ_OFICINA : (t < 0.88 ? LUZ_VENTANA : LUZ_PANTALLA);
+        } else {
+            luz = t < 0.74 ? LUZ_VENTANA : (t < 0.93 ? LUZ_OFICINA : LUZ_PANTALLA);
+        }
+        luz = Destello.mezclar(luz, CALIMA_CIUDAD, Math.min(0.85f, calima * 0.6f));
+        int op = (int) (Azar.entre(120, 235) * (0.55 + 0.45 * cercania));
+        return Destello.alfa(luz, op);
     }
 
     private void volcarVentanas(List<int[]> vivas) {
@@ -813,7 +914,7 @@ public class Escenario {
             nieVel[i] = Azar.entre(2.0, 9.0) * (Azar.probabilidad(0.5) ? 1 : -1);
             nieFase[i] = Azar.angulo();
             double cercania = (double) (nieY[i] - techo) / Math.max(1.0, yHorizonte - techo);
-            nieAlfa[i] = (float) (0.038 + 0.070 * cercania);
+            nieAlfa[i] = (float) (0.050 + 0.095 * cercania);
             nieCalida[i] = Azar.probabilidad(0.45);
         }
         nieblaVelo = crearVeloNiebla();
@@ -862,8 +963,8 @@ public class Escenario {
                 new float[]{0f, 0.55f, 1f},
                 new Color[]{
                     Destello.alfa(NIEBLA_FRIA, 0),
-                    Destello.alfa(NIEBLA_FRIA, 16),
-                    Destello.alfa(NIEBLA_CALIDA, 40)}));
+                    Destello.alfa(NIEBLA_FRIA, 30),
+                    Destello.alfa(NIEBLA_CALIDA, 66)}));
         g.fillRect(0, 0, ancho, altoVelo);
         g.dispose();
         return img;
@@ -911,13 +1012,28 @@ public class Escenario {
             // verticales. Volcado de una sola pasada, las ventanas quedaban
             // como bloques nitidos flotando en el agua; asi se deshacen en
             // trazos, que es como se comportan de verdad.
-            int[] desplazamientos = {-7, -4, -2, 0, 2, 4, 7};
-            for (int i = 0; i < desplazamientos.length; i++) {
-                int dy = desplazamientos[i];
-                g.setComposite(Destello.mezcla(0.030f));
+            // El reflejo se deshace en franjas con desplazamiento propio.
+            // Volcarlo entero, aunque fuera varias veces, dejaba la ciudad
+            // reconocible boca abajo; en el agua lo que hay son trazos
+            // verticales rotos, y cuanto mas lejos de la orilla, mas rotos.
+            int franja = 3;
+            for (int d = 0; d < destAlto; d += franja) {
+                int sy = yHorizonte - d;
+                if (sy - franja < 0) {
+                    break;
+                }
+                double prof = (double) d / Math.max(1, destAlto);
+                // Dos ondas de periodo distinto: una sola se lee como zigzag.
+                int off = (int) Math.round(
+                        Math.sin(d * 0.085) * (2 + 16 * prof)
+                        + Math.sin(d * 0.031 + 1.7) * (1 + 9 * prof));
+                // Se estira en vertical: el reflejo se alarga con el oleaje.
+                int altoDest = franja + (int) Math.round(4 * prof);
+                float a = (float) (0.16 * (1 - prof * 0.75));
+                g.setComposite(Destello.mezcla(a));
                 g.drawImage(skyline,
-                        0, dy, ancho, destAlto + dy,
-                        0, yHorizonte, ancho, origenArriba, null);
+                        off, d, ancho + off, d + altoDest,
+                        0, sy, ancho, sy - franja, null);
             }
         }
 
@@ -1005,21 +1121,37 @@ public class Escenario {
         // Reflejo vivo de la pirotecnia: tiras horizontales espejadas sobre el
         // horizonte, desplazadas por una onda y desvanecidas con la profundidad.
         if (estelas != null) {
+            // Bilineal y no vecino mas cercano: con franjas finas el salto
+            // entre ellas se veia como escalones.
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-            int paso = 6;
-            for (int d = 0; d < hAgua; d += paso) {
+                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            int paso = 5;
+            // El reflejo vivo solo se dibuja en la franja cercana a la orilla.
+            // Mas abajo su opacidad ya es despreciable, pero seguia costando
+            // el mismo volcado a lo ancho de la pantalla: era la mitad del
+            // coste de pintar el agua a cambio de nada visible.
+            int hastaD = (int) (hAgua * 0.66);
+            for (int d = 0; d < hastaD; d += paso) {
                 int sy = y0 - d;
                 if (sy - paso < 0) {
                     break;
                 }
-                float a = (float) (0.34 * (1.0 - (double) d / hAgua));
-                if (a <= 0.01f) {
+                double prof = (double) d / hAgua;
+                // Se apaga del todo al llegar al corte, para que no se vea
+                // donde termina.
+                float a = (float) (0.34 * (1.0 - prof) * (1.0 - d / (double) hastaD));
+                if (a <= 0.012f) {
                     break;
                 }
-                int off = (int) Math.round(Math.sin(d * 0.055 + t * 2.2) * (1.5 + d * 0.05));
+                // Dos ondas superpuestas, mas amplias con la profundidad.
+                int off = (int) Math.round(
+                        Math.sin(d * 0.055 + t * 2.2) * (2 + 14 * prof)
+                        + Math.sin(d * 0.019 - t * 1.3) * (1 + 7 * prof));
+                // Cada franja se dibuja mas alta que su origen y pisa a la
+                // siguiente: eso las funde y da el estirado del reflejo.
+                int altoDest = paso + 1 + (int) Math.round(3 * prof);
                 g.setComposite(Destello.mezcla(a));
-                g.drawImage(estelas, off, y0 + d, ancho + off, y0 + d + paso,
+                g.drawImage(estelas, off, y0 + d, ancho + off, y0 + d + altoDest,
                         0, sy, ancho, sy - paso, null);
             }
         }
