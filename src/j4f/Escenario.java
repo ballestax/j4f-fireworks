@@ -104,14 +104,23 @@ public class Escenario {
      * escena tiene que seguir siendo de noche.
      */
     private static final Color[] PALETA_FACHADAS = {
-        new Color(0x14, 0x2E, 0x3C),   // azul petroleo
-        new Color(0x24, 0x18, 0x3E),   // violeta profundo
-        new Color(0x0E, 0x2E, 0x2A),   // verde abeto
-        new Color(0x36, 0x1C, 0x2A),   // ciruela
-        new Color(0x32, 0x26, 0x14),   // ambar apagado
-        new Color(0x1A, 0x24, 0x44),   // indigo
-        new Color(0x30, 0x18, 0x18)    // teja oscura
+        new Color(0x1A, 0x22, 0x33),   // gris azulado
+        new Color(0x20, 0x22, 0x30),   // gris neutro frio
+        new Color(0x1E, 0x20, 0x2A),   // pizarra
+        new Color(0x24, 0x22, 0x28),   // gris tibio
+        new Color(0x18, 0x20, 0x30),   // azul apagado
+        new Color(0x26, 0x24, 0x26),   // hormigon de noche
+        new Color(0x1C, 0x24, 0x2E)    // verdoso muy leve
     };
+
+    /**
+     * Cuanto se deja notar el tono de fachada.
+     *
+     * En una foto nocturna de verdad las fachadas son casi neutras: el color
+     * lo ponen las luces, no la pared. Con la paleta a plena fuerza la ciudad
+     * parecia pintada a mano, asi que el tono queda como una insinuacion.
+     */
+    private static final float FUERZA_TONO_FACHADA = 0.55f;
 
     private static final Color EDIFICIO_OSCURO = new Color(0x04, 0x06, 0x0F);
     private static final Color EDIFICIO_CLARO = new Color(0x0A, 0x10, 0x24);
@@ -293,6 +302,7 @@ public class Escenario {
         g.setComposite(Destello.mezcla(0.10f));
         g.drawImage(domo, (ancho - dw2) / 2, yHorizonte - dh2 / 2, dw2, dh2, null);
 
+        pintarMontanas(g);
         pintarLuna(g);
 
         g.dispose();
@@ -335,6 +345,88 @@ public class Escenario {
 
     /** Cuanto se agranda el disco antes de reducirlo, para suavizar bordes. */
     private static final int SUPERMUESTREO_LUNA = 4;
+
+    /** Cordilleras al fondo. Dos, para que haya lejania entre ellas. */
+    private static final int CORDILLERAS = 2;
+
+    /**
+     * Sierra al fondo, detras de la ciudad.
+     *
+     * Va dentro del cielo horneado, y ahi esta la gracia: los fuegos se
+     * dibujan despues del cielo y antes de la ciudad, asi que estallan por
+     * delante de la montana y por detras de los edificios. Esa sola capa
+     * intermedia da mas profundidad a la escena que cualquier degradado.
+     *
+     * El perfil sale por desplazamiento del punto medio, que es como se
+     * generan las siluetas de montana desde siempre: se parte de una recta y
+     * se va quebrando por la mitad con un desorden que decrece.
+     */
+    private void pintarMontanas(Graphics2D g) {
+        // Semilla fija: la cordillera no tiene por que cambiar al redimensionar.
+        java.util.Random rnd = new java.util.Random(0x5A17E5L);
+        for (int c = 0; c < CORDILLERAS; c++) {
+            double cercania = c / (double) Math.max(1, CORDILLERAS - 1);
+            // La de atras es mas alta y esta mas desvaida; la de delante se
+            // recorta por debajo, justo sobre los tejados.
+            // Por encima de la linea de tejados: si la cumbre queda por
+            // debajo, la sierra no asoma y no sirve de nada.
+            double cumbre = alto * (0.30 + 0.09 * cercania);
+            double falda = yHorizonte - alto * (0.02 - 0.02 * cercania);
+            double aspereza = alto * (0.075 + 0.045 * cercania);
+
+            int n = 129;
+            double[] perfil = new double[n];
+            perfil[0] = falda - (falda - cumbre) * (0.25 + rnd.nextDouble() * 0.35);
+            perfil[n - 1] = falda - (falda - cumbre) * (0.25 + rnd.nextDouble() * 0.35);
+            int paso = n - 1;
+            double amplitud = aspereza;
+            while (paso > 1) {
+                int medio = paso / 2;
+                for (int i = medio; i < n; i += paso) {
+                    double media = (perfil[i - medio] + perfil[i + medio]) / 2;
+                    perfil[i] = media + (rnd.nextDouble() - 0.5) * amplitud;
+                }
+                paso = medio;
+                amplitud *= 0.56;
+            }
+
+            // Color: la montana lejana es casi el cielo, y esa es la clave de
+            // que se lea como distancia y no como una mancha pegada.
+            // Mas oscura que el cielo a esa altura. Con un tono parecido al
+            // del cielo la sierra no se recortaba: era como si no estuviera.
+            Color tono = Destello.mezclar(
+                    new Color(0x10, 0x19, 0x3C), new Color(0x08, 0x0D, 0x22),
+                    (float) cercania);
+            g.setColor(tono);
+            java.awt.Polygon sierra = new java.awt.Polygon();
+            for (int i = 0; i < n; i++) {
+                int x = (int) Math.round(i * (double) ancho / (n - 1));
+                int y = (int) Math.round(perfil[i]);
+                if (y > falda) {
+                    y = (int) falda;
+                }
+                sierra.addPoint(x, y);
+            }
+            sierra.addPoint(ancho, (int) falda + 2);
+            sierra.addPoint(0, (int) falda + 2);
+            g.fill(sierra);
+
+            // Nieve o luz de luna en las cumbres, muy leve: solo donde la
+            // pendiente mira al cielo.
+            g.setColor(Destello.alfa(Destello.mezclar(tono, LUZ_LUNA, 0.45f),
+                    (int) (26 + 18 * cercania)));
+            for (int i = 1; i < n; i++) {
+                int x0 = (int) Math.round((i - 1) * (double) ancho / (n - 1));
+                int x1 = (int) Math.round(i * (double) ancho / (n - 1));
+                int y0 = (int) Math.round(perfil[i - 1]);
+                int y1 = (int) Math.round(perfil[i]);
+                if (y1 < y0) {   // ladera que sube hacia la derecha
+                    g.fillRect(x0, y1, Math.max(1, x1 - x0),
+                            Math.max(1, (int) (aspereza * 0.10)));
+                }
+            }
+        }
+    }
 
     private void pintarLuna(Graphics2D g) {
         double lx = ancho * 0.78;
@@ -608,7 +700,14 @@ public class Escenario {
             // Una de cada doce es un hito. Un perfil sin torres que sobresalgan
             // se lee como una tapia almenada, no como una ciudad.
             if (Azar.probabilidad(0.085)) {
-                h = (int) Math.round(h * Azar.entre(1.45, 2.10));
+                h = (int) Math.round(h * Azar.entre(1.30, 1.70));
+                // Con tope: el multiplicador se aplica sobre una altura ya
+                // alta y sin acotar salia una torre del doble que todo lo
+                // demas, que no destaca sino que descuadra la escena.
+                int tope = (int) (alto * 0.34);
+                if (h > tope) {
+                    h = tope;
+                }
             }
             if (h < 8) {
                 h = 8;
@@ -625,7 +724,7 @@ public class Escenario {
                 // parezcan tres filas de cromos.
                 Color tono = PALETA_FACHADAS[Azar.entre(0, PALETA_FACHADAS.length - 1)];
                 base = Destello.mezclar(EDIFICIO_OSCURO, tono,
-                        (float) (0.35 + 0.55 * cercania));
+                        (float) ((0.35 + 0.55 * cercania) * FUERZA_TONO_FACHADA));
                 base = Destello.mezclar(base, CALIMA_CIUDAD, calima * 0.75f);
             } else {
                 base = Destello.mezclar(EDIFICIO_OSCURO, EDIFICIO_CLARO,
@@ -647,8 +746,34 @@ public class Escenario {
                     new Color[]{base, base, pie}));
             g.fillRect(x, cima, w, h);
 
-            // Luz de canto en una arista: la ciudad ilumina los bordes.
+            // Cara lateral: un edificio visto de esquina ensena dos caras, y
+            // la que no mira al observador va mas oscura. Es lo que le da
+            // volumen; una fachada sola se lee como recorte de cartulina.
             g.setPaint(null);
+            int anchoLado = 0;
+            int ladoOscuroIzquierda = 0;
+            int ladoOscuroDerecha = 0;
+            if (w > 12 && Azar.probabilidad(0.55)) {
+                anchoLado = (int) Math.round(w * Azar.entre(0.16, 0.32));
+                boolean ladoDerecho = Azar.probabilidad(0.5);
+                int xl = ladoDerecho ? x + w - anchoLado : x;
+                g.setColor(Destello.mezclar(base, EDIFICIO_OSCURO, 0.42f));
+                g.fillRect(xl, cima, anchoLado, h);
+                // Arista viva entre las dos caras: sin ella el cambio de tono
+                // se lee como una mancha y no como un canto.
+                g.setColor(Destello.alfa(
+                        Destello.mezclar(base, RESPLANDOR_CALLE, 0.50f), 90));
+                g.fillRect(ladoDerecho ? xl : xl + anchoLado - 1, cima, 1, h);
+                if (!ladoDerecho) {
+                    // Si el lado oscuro queda a la izquierda, las ventanas
+                    // deben empezar despues de el.
+                    ladoOscuroIzquierda = anchoLado;
+                } else {
+                    ladoOscuroDerecha = anchoLado;
+                }
+            }
+
+            // Luz de canto en la arista exterior: la ciudad ilumina los bordes.
             g.setColor(Destello.alfa(Destello.mezclar(base, RESPLANDOR_CALLE, 0.55f),
                     (int) (70 + 60 * cercania)));
             g.fillRect(x, cima, 1, h);
@@ -657,7 +782,8 @@ public class Escenario {
 
             if (capa > 0) {
                 pintarVentanas(g, x, cima, w, h, pisoAlto, minVentana,
-                        vivas, cercania, calima);
+                        vivas, cercania, calima, ladoOscuroIzquierda,
+                        ladoOscuroDerecha);
             }
             // A veces el siguiente se mete por delante: en una ciudad los
             // edificios se tapan entre si, no van en fila india.
@@ -788,8 +914,15 @@ public class Escenario {
      */
     private void pintarVentanas(Graphics2D g, int x, int y, int w, int h,
             int pisoAlto, int minVentana, List<int[]> vivas,
-            double cercania, float calima) {
+            double cercania, float calima, int ladoIzq, int ladoDer) {
         g.setPaint(null);
+        // La cara lateral oscura no lleva ventanas encendidas: es la que no
+        // mira al observador, y iluminarla desharia el volumen.
+        x += ladoIzq;
+        w -= ladoIzq + ladoDer;
+        if (w < 4) {
+            return;
+        }
         int tipo = tipoEdificio(h, cercania);
         if (tipo == TIPO_OSCURO) {
             // Unas pocas luces sueltas y poco mas: tambien hace falta que
@@ -875,7 +1008,9 @@ public class Escenario {
     /** Edificio casi apagado: cuatro luces sueltas y nada mas. */
     private void pintarLucesSueltas(Graphics2D g, int x, int y, int w, int h,
             int pisoAlto, double cercania, float calima) {
-        int n = Azar.entre(0, 5);
+        // Una o dos luces, rara vez tres. Un edificio a oscuras con cinco
+        // ventanas encendidas no esta a oscuras.
+        int n = Azar.probabilidad(0.30) ? 0 : Azar.entre(1, 3);
         int vw = Math.max(1, (int) Math.round(w * 0.09));
         int vh = Math.max(1, (int) Math.round(pisoAlto * 0.9));
         for (int i = 0; i < n; i++) {
