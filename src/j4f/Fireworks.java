@@ -94,14 +94,24 @@ public class Fireworks extends JPanel {
      * Modo emision: escena limpia para un directo.
      *
      * Sin ayuda, sin rotulo de entrada y sin avisos, porque en una captura de
-     * pantalla todo eso queda pegado en el video. Ademas rota de genero sola:
-     * un directo de veinticuatro horas con un unico ambiente cansa, y nadie va
-     * a estar pulsando la tecla al otro lado.
+     * pantalla todo eso queda pegado en el video. Por defecto rota de genero
+     * sola: un directo de veinticuatro horas con un unico ambiente cansa, y
+     * nadie va a estar pulsando la tecla al otro lado. Se puede fijar un solo
+     * genero al arrancar, para un directo tematico.
      */
     private volatile boolean modoEmision;
     /** Cada cuanto cambia de genero cuando emite. */
     private static final double MINUTOS_POR_GENERO = 9.0;
     private double desdeCambioGenero;
+    /**
+     * Si el directo rota de genero o se queda en uno solo.
+     *
+     * Rotar es lo que conviene a un canal generalista, pero un directo tiene
+     * a menudo un tema: una emision de solo guitarra o solo chill se anuncia
+     * como tal y cambiar de ambiente cada nueve minutos la estropea. Se elige
+     * al arrancar, que es cuando se sabe que se va a emitir.
+     */
+    private volatile boolean rotarGenero = true;
 
     /**
      * Cuenta atras del indicador de volumen: 1 recien tocado, 0 oculto.
@@ -238,6 +248,28 @@ public class Fireworks extends JPanel {
     public void cambiarGenero() {
         Musica.Genero g = musica.siguienteGenero();
         mostrarAviso(g == null ? null : g.name());
+    }
+
+    /** Pone un genero concreto. Anuncia en pantalla salvo que se este emitiendo. */
+    public void fijarGenero(Musica.Genero g) {
+        if (g == null) {
+            return;
+        }
+        musica.setGenero(g);
+        if (!modoEmision) {
+            mostrarAviso(g.name());
+        }
+    }
+
+    /**
+     * En emision, si rota de genero cada pocos minutos o se queda en uno.
+     *
+     * Solo afecta al cambio automatico: la tecla G sigue funcionando, que es
+     * util para corregir a mano sin reiniciar el directo.
+     */
+    public void setRotarGenero(boolean valor) {
+        rotarGenero = valor;
+        desdeCambioGenero = 0;
     }
 
     private void mostrarAviso(String etiqueta) {
@@ -417,7 +449,7 @@ public class Fireworks extends JPanel {
         if (resplandor > 0) {
             resplandor = Math.max(0, resplandor - dt / DUR_RESPLANDOR);
         }
-        if (modoEmision) {
+        if (modoEmision && rotarGenero) {
             desdeCambioGenero += dt;
             if (desdeCambioGenero >= MINUTOS_POR_GENERO * 60.0) {
                 desdeCambioGenero = 0;

@@ -13,6 +13,28 @@ pantalla completa, la segunda cierra).
 
 Usa `javaw` y no `java` para que no quede una consola por detrás.
 
+### Un solo género o rotando
+
+Por defecto rota, que es lo que conviene a un directo generalista de 24 horas.
+Para una emisión temática —"guitarra toda la noche"— se fija el género y el
+cambio automático se apaga:
+
+```powershell
+javaw -cp build\classes j4f.J4F --emision --genero guitarra
+```
+
+Géneros: `chill`, `jazz`, `clasica`, `caribena`, `guitarra`, `violin`. Se
+aceptan también `salsa`, `classical`, `guitar` y `cuerda`.
+
+Si el nombre está mal escrito **la aplicación no arranca** y dice cuáles hay.
+Es a propósito: un directo lanzado desde un script con una errata emitiría
+horas del ambiente equivocado sin que nadie se diera cuenta.
+
+La tecla **G** sigue cambiando de género a mano aunque esté fijado, por si hay
+que corregir sin reiniciar el directo. `--rotar` es el comportamiento por
+defecto y solo hace falta escribirlo para anular un `--genero` anterior en la
+misma línea.
+
 ## 2. Instalar OBS
 
 No lo tienes instalado. Descárgalo de `obsproject.com` (gratis, código abierto).

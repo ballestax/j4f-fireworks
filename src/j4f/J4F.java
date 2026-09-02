@@ -27,6 +27,9 @@ import javax.swing.SwingUtilities;
  * la aplicacion si ya estaba en ventana), ESPACIO lanza un cohete, T una traca,
  * P pausa y F3 muestra el contador de fotogramas.
  *
+ * Linea de ordenes: --emision para un directo, --genero &lt;nombre&gt; para
+ * quedarse en un solo genero y --rotar (por defecto) para ir cambiando.
+ *
  * @author ballestas
  */
 public class J4F {
@@ -40,12 +43,30 @@ public class J4F {
 
     /** Arranque pensado para emitir: pantalla completa, limpio y sin tocar nada. */
     private static boolean modoEmision;
+    /**
+     * Genero fijado por linea de ordenes, o null para rotar.
+     *
+     * Un directo generalista gana rotando, pero uno anunciado como "guitarra
+     * toda la noche" no: ahi el cambio automatico es un defecto. Se decide al
+     * arrancar porque es lo unico que hay al lanzar el directo desde un script.
+     */
+    private static Musica.Genero generoFijo;
 
     public static void main(String[] args) {
         for (int i = 0; i < args.length; i++) {
             String a = args[i].toLowerCase();
             if (a.equals("--emision") || a.equals("-e") || a.equals("--stream")) {
                 modoEmision = true;
+            } else if (a.equals("--rotar")) {
+                generoFijo = null;
+            } else if (a.startsWith("--genero=")) {
+                generoFijo = generoDe(a.substring("--genero=".length()));
+            } else if ((a.equals("--genero") || a.equals("-g")) && i + 1 < args.length) {
+                i++;
+                generoFijo = generoDe(args[i].toLowerCase());
+            } else if (a.equals("--ayuda") || a.equals("-h") || a.equals("--help")) {
+                uso();
+                return;
             }
         }
         SwingUtilities.invokeLater(new Runnable() {
@@ -54,6 +75,64 @@ public class J4F {
                 construir();
             }
         });
+    }
+
+    /**
+     * Traduce el nombre de genero de la linea de ordenes.
+     *
+     * Si no se reconoce se corta el arranque en vez de seguir con el genero
+     * por defecto: un directo lanzado desde un script con el nombre mal
+     * escrito emitiria durante horas el ambiente equivocado sin que nadie se
+     * entere. Mas vale no arrancar.
+     *
+     * Se admiten unos pocos alias en ingles porque son los que salen solos al
+     * escribir de memoria.
+     */
+    private static Musica.Genero generoDe(String nombre) {
+        String n = nombre.trim().toUpperCase();
+        Musica.Genero[] todos = Musica.Genero.values();
+        for (int i = 0; i < todos.length; i++) {
+            if (todos[i].name().equals(n)) {
+                return todos[i];
+            }
+        }
+        if (n.equals("CLASSICAL") || n.equals("CLASICO")) {
+            return Musica.Genero.CLASICA;
+        }
+        if (n.equals("CARIBBEAN") || n.equals("SALSA")) {
+            return Musica.Genero.CARIBENA;
+        }
+        if (n.equals("GUITAR")) {
+            return Musica.Genero.GUITARRA;
+        }
+        if (n.equals("VIOLIN") || n.equals("CUERDA")) {
+            return Musica.Genero.VIOLIN;
+        }
+        System.err.println("Genero desconocido: " + nombre);
+        System.err.println("Disponibles: " + nombres());
+        System.exit(2);
+        return null;
+    }
+
+    private static String nombres() {
+        StringBuilder sb = new StringBuilder();
+        Musica.Genero[] todos = Musica.Genero.values();
+        for (int i = 0; i < todos.length; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(todos[i].name().toLowerCase());
+        }
+        return sb.toString();
+    }
+
+    private static void uso() {
+        System.out.println("Fireworks");
+        System.out.println("  --emision, -e      pantalla completa y escena limpia, para emitir");
+        System.out.println("  --genero <nombre>  un solo genero, sin rotacion automatica");
+        System.out.println("  --rotar            cambia de genero cada 9 minutos (por defecto)");
+        System.out.println("  --ayuda, -h        esta ayuda");
+        System.out.println("Generos: " + nombres());
     }
 
     private static void construir() {
@@ -82,6 +161,13 @@ public class J4F {
         panel.requestFocusInWindow();
         panel.iniciar();
         panel.iniciarMusica();
+
+        // Despues de iniciarMusica: antes no hay secuenciador al que mandarle
+        // el cambio de timbres.
+        if (generoFijo != null) {
+            panel.fijarGenero(generoFijo);
+        }
+        panel.setRotarGenero(generoFijo == null);
 
         if (modoEmision) {
             // Escena limpia para el capturador: nada de rotulos ni de ventana.
