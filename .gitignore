@@ -11,3 +11,6 @@ herramientas/salida/
 
 # Bancos de sonido: assets grandes, se descargan aparte
 sonido/
+
+# Muestras de audio: pesan y se regeneran con el volcado
+canal/audio/
