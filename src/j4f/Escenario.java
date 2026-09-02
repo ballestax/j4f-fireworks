@@ -1,11 +1,13 @@
 package j4f;
 
 import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.LinearGradientPaint;
 import java.awt.MultipleGradientPaint;
 import java.awt.Paint;
+import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.Stroke;
@@ -250,6 +252,43 @@ public class Escenario {
         return img;
     }
 
+    /**
+     * Posicion de los mares lunares, en radios desde el centro del disco.
+     *
+     * No son manchas al azar: son los mares de verdad, en su sitio. Es lo que
+     * hace que el disco se lea como la Luna y no como una bola con pecas,
+     * porque ese dibujo lo tenemos todos memorizado sin saberlo.
+     * Cada fila es {x, y, radioX, radioY, oscuridad}.
+     */
+    private static final double[][] MARES_LUNA = {
+        {-0.34, -0.34, 0.30, 0.26, 1.00},   // Imbrium
+        {0.06, -0.30, 0.20, 0.18, 0.95},    // Serenitatis
+        {0.26, -0.08, 0.22, 0.20, 1.00},    // Tranquillitatis
+        {0.56, -0.26, 0.11, 0.10, 0.85},    // Crisium
+        {0.46, 0.12, 0.15, 0.17, 0.80},     // Fecunditatis
+        {0.30, 0.26, 0.11, 0.12, 0.75},     // Nectaris
+        {-0.20, 0.30, 0.20, 0.14, 0.80},    // Nubium
+        {-0.58, -0.02, 0.24, 0.34, 0.85},   // Procellarum
+        {-0.42, 0.36, 0.13, 0.11, 0.70}     // Humorum
+    };
+
+    /** Crateres notables: {x, y, radio, brillo del reborde}. */
+    private static final double[][] CRATERES_LUNA = {
+        {-0.16, 0.54, 0.075, 1.00},   // Tycho, el de los rayos
+        {-0.02, 0.30, 0.070, 0.75},   // Copernico
+        {-0.44, 0.14, 0.050, 0.70},   // Kepler
+        {0.38, 0.52, 0.055, 0.60},
+        {-0.60, -0.40, 0.045, 0.55},
+        {0.14, 0.62, 0.040, 0.50},
+        {0.52, -0.52, 0.038, 0.45},
+        {-0.30, -0.62, 0.042, 0.50},
+        {0.62, 0.24, 0.035, 0.45},
+        {-0.66, 0.30, 0.032, 0.40}
+    };
+
+    /** Cuanto se agranda el disco antes de reducirlo, para suavizar bordes. */
+    private static final int SUPERMUESTREO_LUNA = 4;
+
     private void pintarLuna(Graphics2D g) {
         double lx = ancho * 0.78;
         double ly = alto * 0.16;
@@ -265,17 +304,150 @@ public class Escenario {
         g.drawImage(halo, (int) Math.round(lx - hw2 / 2.0), (int) Math.round(ly - hw2 / 2.0), hw2, hw2, null);
 
         g.setComposite(AlphaComposite.SrcOver);
-        g.setColor(LUZ_LUNA);
-        int d = (int) Math.round(r * 2);
-        g.fillOval((int) Math.round(lx - r), (int) Math.round(ly - r), d, d);
+        int d = Math.max(2, (int) Math.round(r * 2));
+        BufferedImage disco = crearDiscoLunar(d * SUPERMUESTREO_LUNA);
+        Object interp = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(disco, (int) Math.round(lx - r), (int) Math.round(ly - r), d, d, null);
+        if (interp != null) {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, interp);
+        }
+    }
 
-        // Sombreado muy leve para que el disco no parezca una pegatina plana.
-        g.setColor(new Color(212, 220, 242, 60));
-        g.fillOval((int) Math.round(lx - r * 0.45), (int) Math.round(ly - r * 0.15),
-                Math.max(1, (int) Math.round(r * 0.9)), Math.max(1, (int) Math.round(r * 0.8)));
-        g.setColor(new Color(216, 224, 244, 45));
-        g.fillOval((int) Math.round(lx + r * 0.05), (int) Math.round(ly - r * 0.62),
-                Math.max(1, (int) Math.round(r * 0.5)), Math.max(1, (int) Math.round(r * 0.45)));
+    /**
+     * Dibuja el disco lunar con relieve.
+     *
+     * Se pinta grande y se reduce al vuelco: a tamano final los crateres
+     * ocupan pocos pixeles y sin supermuestreo saldrian dentados.
+     *
+     * El relieve sale de una sola idea repetida: cada crater es un borde claro
+     * por donde da el sol y una sombra por el lado contrario. Con la luz
+     * viniendo siempre del mismo sitio, el ojo reconstruye el volumen solo.
+     */
+    private BufferedImage crearDiscoLunar(int tam) {
+        BufferedImage img = new BufferedImage(tam, tam, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        double c = tam / 2.0;
+        double r = c - 1;
+        // El sol le da desde arriba a la derecha. Todas las sombras obedecen
+        // a esta direccion: si cada crater se sombreara a su aire, el ojo lo
+        // detecta enseguida y el relieve se deshace.
+        double luzX = 0.55;
+        double luzY = -0.62;
+
+        Shape disco = new java.awt.geom.Ellipse2D.Double(c - r, c - r, r * 2, r * 2);
+        g.setClip(disco);
+
+        // Base: la Luna no es blanca, es un gris calido.
+        g.setColor(new Color(0xE8, 0xE6, 0xDF));
+        g.fill(disco);
+
+        // La Luna siempre es la misma: generador propio con semilla fija, para
+        // que no cambie de cara en cada redimension.
+        java.util.Random rnd = new java.util.Random(0x11FEL);
+
+        // Mares: basalto oscuro. Cada uno se compone de varias elipses
+        // solapadas y descentradas, no de una sola. Una elipse perfecta se lee
+        // como un circulo pintado encima de una bola; los mares de verdad
+        // tienen el contorno roto.
+        for (int i = 0; i < MARES_LUNA.length; i++) {
+            double[] m = MARES_LUNA[i];
+            double mx = c + m[0] * r;
+            double my = c + m[1] * r;
+            double rx = m[2] * r;
+            double ry = m[3] * r;
+            int op = (int) Math.round(52 * m[4]);
+            int lobulos = 4 + rnd.nextInt(3);
+            for (int lb = 0; lb < lobulos; lb++) {
+                double dx = (rnd.nextDouble() - 0.5) * rx * 0.85;
+                double dy = (rnd.nextDouble() - 0.5) * ry * 0.85;
+                double fx = rx * (0.55 + rnd.nextDouble() * 0.55);
+                double fy = ry * (0.55 + rnd.nextDouble() * 0.55);
+                for (int k = 2; k >= 1; k--) {
+                    double f = 0.78 + 0.16 * k;
+                    g.setColor(new Color(0x67, 0x6C, 0x7C, op));
+                    g.fill(new java.awt.geom.Ellipse2D.Double(
+                            mx + dx - fx * f, my + dy - fy * f, fx * 2 * f, fy * 2 * f));
+                }
+            }
+        }
+
+        // Textura: muchos crateres pequenos. Sin ellos la superficie entre
+        // mares queda como porcelana, y lo que se ve en la Luna es un terreno
+        // picado por todas partes.
+        for (int i = 0; i < 90; i++) {
+            double ang = rnd.nextDouble() * Math.PI * 2;
+            // Raiz cuadrada del radio: reparte por area y no amontona al centro.
+            double rad = Math.sqrt(rnd.nextDouble()) * r * 0.94;
+            double px = c + Math.cos(ang) * rad;
+            double py = c + Math.sin(ang) * rad;
+            double pr = r * (0.006 + rnd.nextDouble() * 0.022);
+            double desp = pr * 0.35;
+            g.setColor(new Color(0x50, 0x52, 0x5E, 60));
+            g.fill(new java.awt.geom.Ellipse2D.Double(
+                    px - pr - luzX * desp, py - pr - luzY * desp, pr * 2, pr * 2));
+            g.setColor(new Color(255, 255, 250, 70));
+            g.fill(new java.awt.geom.Ellipse2D.Double(
+                    px - pr * 0.85 + luzX * desp, py - pr * 0.85 + luzY * desp,
+                    pr * 1.7, pr * 1.7));
+        }
+
+        // Rayos de Tycho: el rasgo mas visible de la Luna llena.
+        double tx = c + CRATERES_LUNA[0][0] * r;
+        double ty = c + CRATERES_LUNA[0][1] * r;
+        g.setStroke(new BasicStroke((float) (r * 0.012)));
+        for (int i = 0; i < 11; i++) {
+            double ang = i * (Math.PI * 2 / 11) + 0.4;
+            double largo = r * (0.55 + 0.45 * ((i * 7 % 5) / 5.0));
+            g.setColor(new Color(255, 255, 255, 40));
+            g.drawLine((int) tx, (int) ty,
+                    (int) (tx + Math.cos(ang) * largo), (int) (ty + Math.sin(ang) * largo));
+        }
+
+        // Crateres con relieve.
+        for (int i = 0; i < CRATERES_LUNA.length; i++) {
+            double[] k = CRATERES_LUNA[i];
+            double kx = c + k[0] * r;
+            double ky = c + k[1] * r;
+            double kr = k[2] * r;
+            double desp = kr * 0.30;
+            // Sombra en el lado contrario a la luz.
+            g.setColor(new Color(0x44, 0x46, 0x52, (int) (135 * k[3])));
+            g.fill(new java.awt.geom.Ellipse2D.Double(
+                    kx - kr - luzX * desp, ky - kr - luzY * desp, kr * 2, kr * 2));
+            // Reborde iluminado por donde da el sol.
+            g.setColor(new Color(255, 255, 248, (int) (165 * k[3])));
+            g.fill(new java.awt.geom.Ellipse2D.Double(
+                    kx - kr * 0.92 + luzX * desp, ky - kr * 0.92 + luzY * desp,
+                    kr * 1.84, kr * 1.84));
+            // Suelo del crater, mas oscuro que el terreno.
+            g.setColor(new Color(0x82, 0x86, 0x94, (int) (95 * k[3])));
+            g.fill(new java.awt.geom.Ellipse2D.Double(
+                    kx - kr * 0.62, ky - kr * 0.62, kr * 1.24, kr * 1.24));
+        }
+
+        // Oscurecimiento del limbo: el borde del disco cae, y eso es lo que
+        // convierte un circulo en una esfera.
+        g.setPaint(new RadialGradientPaint(
+                new Point2D.Double(c, c), (float) r,
+                new float[]{0f, 0.70f, 0.92f, 1f},
+                new Color[]{new Color(0, 0, 0, 0), new Color(0, 0, 0, 0),
+                    new Color(0x1A, 0x1C, 0x28, 60), new Color(0x12, 0x14, 0x20, 150)},
+                MultipleGradientPaint.CycleMethod.NO_CYCLE));
+        g.fill(disco);
+
+        // Terminador suave: una una de sombra en el borde de poniente. Sin
+        // ella el disco se lee plano por muy bien sombreados que esten los
+        // crateres; con ella, es una bola iluminada de lado.
+        g.setPaint(new java.awt.GradientPaint(
+                (float) (c - r), (float) c, new Color(0x0C, 0x0E, 0x18, 175),
+                (float) (c - r * 0.55), (float) c, new Color(0, 0, 0, 0)));
+        g.fill(disco);
+
+        g.dispose();
+        return img;
     }
 
     // ------------------------------------------------------------------
