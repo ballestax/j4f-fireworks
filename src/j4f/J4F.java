@@ -51,12 +51,27 @@ public class J4F {
      * arrancar porque es lo unico que hay al lanzar el directo desde un script.
      */
     private static Musica.Genero generoFijo;
+    /**
+     * Si la pantalla completa usa el modo exclusivo del dispositivo.
+     *
+     * En exclusivo la ventana deja de ser una ventana normal del escritorio y
+     * los capturadores no la encuentran: en OBS no aparece siquiera en la
+     * lista de "captura de ventana". Por eso el modo emision usa una ventana
+     * sin bordes del tamano de la pantalla, que se ve igual y si es
+     * capturable. El exclusivo se queda para la tecla F en uso normal, donde
+     * da algo menos de latencia, y se puede pedir con --exclusiva.
+     */
+    private static boolean exclusiva = true;
 
     public static void main(String[] args) {
         for (int i = 0; i < args.length; i++) {
             String a = args[i].toLowerCase();
             if (a.equals("--emision") || a.equals("-e") || a.equals("--stream")) {
                 modoEmision = true;
+                // Se emite para que lo capture OBS: sin exclusiva por defecto.
+                exclusiva = false;
+            } else if (a.equals("--exclusiva")) {
+                exclusiva = true;
             } else if (a.equals("--rotar")) {
                 generoFijo = null;
             } else if (a.startsWith("--genero=")) {
@@ -131,6 +146,7 @@ public class J4F {
         System.out.println("  --emision, -e      pantalla completa y escena limpia, para emitir");
         System.out.println("  --genero <nombre>  un solo genero, sin rotacion automatica");
         System.out.println("  --rotar            cambia de genero cada 9 minutos (por defecto)");
+        System.out.println("  --exclusiva        pantalla completa exclusiva (OBS no la captura)");
         System.out.println("  --ayuda, -h        esta ayuda");
         System.out.println("Generos: " + nombres());
     }
@@ -338,10 +354,14 @@ public class J4F {
             geometriaPrevia = ventana.getBounds();
             ventana.dispose();
             ventana.setUndecorated(true);
-            if (pantalla.isFullScreenSupported()) {
+            if (exclusiva && pantalla.isFullScreenSupported()) {
                 pantalla.setFullScreenWindow(ventana);
             } else {
-                ventana.setExtendedState(JFrame.MAXIMIZED_BOTH);
+                // Ventana sin bordes ocupando la pantalla entera. Se usan los
+                // limites del dispositivo y no MAXIMIZED_BOTH porque este
+                // respeta el area de trabajo y dejaria la barra de tareas a la
+                // vista, que en un directo de 24 horas se ve todo el rato.
+                ventana.setBounds(pantalla.getDefaultConfiguration().getBounds());
                 ventana.setVisible(true);
             }
             pantallaCompleta = true;

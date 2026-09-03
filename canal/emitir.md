@@ -41,9 +41,13 @@ No lo tienes instalado. Descárgalo de `obsproject.com` (gratis, código abierto
 
 ## 3. Configurar la escena
 
-**Fuente de vídeo** — Añadir → *Captura de pantalla* (o *Captura de ventana*
-seleccionando la ventana de Fireworks). Captura de pantalla suele dar menos
-problemas con las aplicaciones en pantalla completa.
+**Fuente de vídeo** — Añadir → *Captura de ventana* y elige
+`[javaw.exe]: Fireworks`. Si no la ves en la lista, mira el apartado
+«La ventana de Java no aparece en OBS» más abajo.
+
+*Captura de pantalla* también sirve y es la alternativa si la de ventana da
+guerra, pero graba todo el monitor: cualquier notificación que salte se va al
+directo.
 
 **Fuente de audio** — Aquí está lo delicado. La app suena por los altavoces
 del sistema, así que hay que capturar lo que sale:
@@ -54,6 +58,41 @@ del sistema, así que hay que capturar lo que sale:
 
 Comprueba en el mezclador que la barra de *Audio de escritorio* se mueve y la
 del micrófono no.
+
+### La ventana de Java no aparece en OBS
+
+Son dos fallos distintos y conviene no confundirlos.
+
+**No aparece en la lista.** Era el modo de pantalla completa *exclusiva*: en
+ese modo la ventana deja de ser una ventana normal del escritorio (se marca
+como «siempre encima» y pierde los atributos habituales), y OBS ni la
+enumera. **Ya está arreglado**: `--emision` usa desde ahora una ventana sin
+bordes del tamaño de la pantalla, que se ve exactamente igual y sí es
+capturable. Comprobado: con `--emision` la ventana mide la pantalla completa
+y no lleva la marca de «siempre encima»; con `--exclusiva` sí la lleva.
+
+Si aún así no la ves:
+
+- Arranca **primero la aplicación y después OBS**, o pulsa el botón de
+  recargar de la lista: OBS la construye al abrir el diálogo.
+- OBS y la aplicación tienen que correr con **los mismos permisos**. Si uno de
+  los dos va como administrador y el otro no, el que va sin permisos no ve al
+  otro.
+
+**Aparece pero sale en negro.** Ese es otro problema: OBS está usando el
+método de captura *BitBlt*, que no sabe leer una ventana acelerada por
+Direct3D, que es lo que usa Java en Windows. Dos arreglos, cualquiera vale:
+
+- En las propiedades de la fuente, *Método de captura* →
+  **Windows 10 (1903 y posteriores)**.
+- O arrancar la aplicación pidiendo a Java que no use Direct3D:
+
+  ```powershell
+  javaw -Dsun.java2d.d3d=false -cp build\classes j4f.J4F --emision
+  ```
+
+`--exclusiva` fuerza el modo antiguo. Solo tiene sentido para verlo tú en el
+monitor, nunca para emitir.
 
 ## 4. Ajustes de emisión
 
