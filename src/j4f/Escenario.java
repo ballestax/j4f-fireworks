@@ -196,7 +196,100 @@ public class Escenario {
     private double[] briAncho;
     private int[] briY;
 
+    // ------------------------------------------------------------------
+    // Luna: posicion viva
+    // ------------------------------------------------------------------
+
+    /** Lo que tarda la luna en cruzar el cielo de lado a lado, en minutos. */
+    private static final double MINUTOS_TRAVESIA_LUNA = 45.0;
+    /** Mes sinodico: lo que tarda la Luna en volver a la misma fase. */
+    private static final double MES_SINODICO = 29.530588853;
+    /** Luna nueva de referencia: 6 de enero de 2000, 18:14 UTC. */
+    private static final long LUNA_NUEVA_REF = 947182440000L;
+
+    /**
+     * Ancho del halo en radios lunares.
+     *
+     * Era 13 cuando iba horneado en el cielo y daba igual lo que costase. Al
+     * moverse, cada radio de halo son pixeles compuestos en cada fotograma, y
+     * el area crece con el cuadrado: bajarlo a 9 cuesta un resplandor algo mas
+     * corto y ahorra la mitad del trabajo.
+     */
+    private static final double HALO_LUNA = 9.0;
+
+    /** Disco horneado. Se vuelca cada fotograma; hornearlo cuesta demasiado. */
+    private BufferedImage lunaDisco;
+    /** Halo ya horneado a su tamano final, para volcarlo sin remuestrear. */
+    private BufferedImage lunaHalo;
+    private int lunaHaloLado;
+    /** Edad lunar con la que se horneo el disco, para saber cuando rehacerlo. */
+    private double lunaEdadHorneada = -1;
+    private int lunaDiametro;
+    /** Posicion del centro en pixeles, recalculada en cada actualizar(). */
+    private double lunaX;
+    private double lunaY;
+    private double lunaRadio;
+    /** Falso mientras esta por debajo del horizonte. */
+    private boolean lunaVisible;
+    /**
+     * Minuto del dia en que arranco la aplicacion.
+     *
+     * La travesia se cuelga del reloj real en vez de empezar siempre en el
+     * horizonte: asi reiniciar el directo no teletransporta la luna al punto
+     * de partida, sigue mas o menos donde estaba.
+     */
+    private final double minutoInicial;
+
     public Escenario() {
+        java.time.LocalTime ahora = java.time.LocalTime.now();
+        minutoInicial = ahora.getHour() * 60.0 + ahora.getMinute()
+                + ahora.getSecond() / 60.0;
+    }
+
+    /**
+     * Edad de la Luna en dias desde la ultima luna nueva.
+     *
+     * Aproximacion lineal sobre el mes sinodico medio. Se desvia unas horas
+     * respecto de las efemerides reales, que para un dibujo de 69 pixeles
+     * sobra: lo que importa es que la fase sea la de esta noche y no una
+     * cualquiera.
+     */
+    private static double edadLunar() {
+        double dias = (System.currentTimeMillis() - LUNA_NUEVA_REF) / 86400000.0;
+        double edad = dias % MES_SINODICO;
+        return edad < 0 ? edad + MES_SINODICO : edad;
+    }
+
+    /** Fraccion del disco iluminada, de 0 en luna nueva a 1 en llena. */
+    private static double iluminada(double edad) {
+        return (1 - Math.cos(2 * Math.PI * edad / MES_SINODICO)) / 2;
+    }
+
+    /**
+     * Coloca la luna en su arco.
+     *
+     * Sale por la izquierda, culmina en el centro y se pone por la derecha,
+     * que es el sentido que lleva mirando al sur. Los extremos quedan por
+     * debajo del horizonte, asi que se pone y sale detras de la ciudad en vez
+     * de aparecer de la nada: el disco se dibuja antes que el skyline y este
+     * lo tapa solo.
+     */
+    private void situarLuna() {
+        if (alto <= 0) {
+            lunaVisible = false;
+            return;
+        }
+        double minutos = minutoInicial + t / 60.0;
+        double f = (minutos / MINUTOS_TRAVESIA_LUNA) % 1.0;
+        if (f < 0) {
+            f += 1.0;
+        }
+        double base = yHorizonte + alto * 0.03;
+        double cima = alto * 0.09;
+        lunaX = ancho * (-0.08 + 1.16 * f);
+        lunaY = base - (base - cima) * Math.sin(Math.PI * f);
+        lunaRadio = Math.max(2.0, alto * 0.032);
+        lunaVisible = lunaY - lunaRadio < yHorizonte;
     }
 
     // ------------------------------------------------------------------
@@ -235,11 +328,17 @@ public class Escenario {
         skyline = crearSkyline();
         incrustarVeloNiebla();
         aguaBase = crearAgua();
+        situarLuna();
+        hornearLuna();
     }
 
     public void actualizar(double dt) {
         if (dt > 0) {
             t += dt;
+        }
+        situarLuna();
+        if (ancho > 0 && alto > 0) {
+            hornearLuna();
         }
     }
 
@@ -312,7 +411,8 @@ public class Escenario {
         g.drawImage(domo, (ancho - dw2) / 2, yHorizonte - dh2 / 2, dw2, dh2, null);
 
         pintarMontanas(g);
-        pintarLuna(g);
+        // La luna ya no va aqui: se mueve, y rehornear el cielo cuesta 83 ms.
+        // Se hornea aparte en hornearLuna() y se vuelca en pintarFondo().
 
         g.dispose();
         return img;
@@ -455,27 +555,86 @@ public class Escenario {
         }
     }
 
-    private void pintarLuna(Graphics2D g) {
-        double lx = ancho * 0.78;
-        double ly = alto * 0.16;
+    /**
+     * Hornea el disco con la fase de hoy.
+     *
+     * Se rehace solo cuando la fase cambia lo bastante como para notarse. La
+     * Luna tarda casi un mes en dar la vuelta, asi que esto ocurre una vez
+     * cada muchos minutos: un fotograma largo cada tanto, invisible en un
+     * directo, a cambio de no rehornear nada en los otros veinte mil.
+     */
+    private void hornearLuna() {
+        double edad = edadLunar();
         double r = Math.max(2.0, alto * 0.032);
+        int d = Math.max(2, (int) Math.round(r * 2));
+        // 0.05 dias son 72 minutos, y en ese rato la fraccion iluminada se
+        // mueve menos de un uno por ciento: invisible. Rehornear mas a menudo
+        // solo compra fotogramas largos que nadie agradece.
+        if (lunaDisco != null && d == lunaDiametro
+                && Math.abs(edad - lunaEdadHorneada) < 0.05) {
+            return;
+        }
+        lunaDiametro = d;
+        lunaEdadHorneada = edad;
+        lunaDisco = crearDiscoLunar(d * SUPERMUESTREO_LUNA, edad);
 
-        BufferedImage halo = Destello.de(new Color(200, 216, 255));
-        int hw = Math.max(4, (int) Math.round(r * 13));
-        g.setComposite(Destello.mezcla(0.30f));
-        g.drawImage(halo, (int) Math.round(lx - hw / 2.0), (int) Math.round(ly - hw / 2.0), hw, hw, null);
+        // Halo horneado a su tamano final.
+        //
+        // Cuando la luna estaba dentro del cielo esto no importaba, pero al
+        // moverse el halo pasaba a escalarse con interpolacion bilineal en
+        // cada fotograma: 449 pixeles de lado, medidos en +4,8 ms. Horneado
+        // una vez, el volcado va uno a uno y sin remuestreo.
+        int lado = Math.max(d + 4, (int) Math.round(r * HALO_LUNA));
+        lunaHaloLado = lado;
+        BufferedImage halo = new BufferedImage(lado, lado, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D gh = halo.createGraphics();
+        BufferedImage brocha = Destello.de(new Color(200, 216, 255));
+        gh.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        gh.setComposite(Destello.mezcla(0.30f));
+        gh.drawImage(brocha, 0, 0, lado, lado, null);
+        int estrecho = Math.max(4, (int) Math.round(r * 5));
+        gh.setComposite(Destello.mezcla(0.55f));
+        gh.drawImage(brocha, (lado - estrecho) / 2, (lado - estrecho) / 2,
+                estrecho, estrecho, null);
+        gh.dispose();
+        lunaHalo = halo;
+    }
 
-        int hw2 = Math.max(4, (int) Math.round(r * 5));
-        g.setComposite(Destello.mezcla(0.55f));
-        g.drawImage(halo, (int) Math.round(lx - hw2 / 2.0), (int) Math.round(ly - hw2 / 2.0), hw2, hw2, null);
+    /**
+     * Vuelca la luna en su posicion del momento.
+     *
+     * Va entre el cielo y los fuegos, asi que el skyline la tapa cuando esta
+     * baja y los cohetes pasan por delante de ella.
+     */
+    private void pintarLuna(Graphics2D g) {
+        if (!lunaVisible || lunaDisco == null) {
+            return;
+        }
+        double lx = lunaX;
+        double ly = lunaY;
+        double r = lunaRadio;
+        // El halo se apaga cuando la luna esta baja: cerca del horizonte hay
+        // mas atmosfera de por medio y el resplandor se pierde.
+        double altura = (yHorizonte - ly) / Math.max(1.0, yHorizonte - alto * 0.09);
+        if (altura < 0) {
+            altura = 0;
+        } else if (altura > 1) {
+            altura = 1;
+        }
+        float fuerza = (float) (0.35 + 0.65 * altura);
+
+        // Uno a uno, sin escalar: el halo ya viene del tamano que toca.
+        g.setComposite(Destello.mezcla(fuerza));
+        g.drawImage(lunaHalo, (int) Math.round(lx - lunaHaloLado / 2.0),
+                (int) Math.round(ly - lunaHaloLado / 2.0), null);
 
         g.setComposite(AlphaComposite.SrcOver);
-        int d = Math.max(2, (int) Math.round(r * 2));
-        BufferedImage disco = crearDiscoLunar(d * SUPERMUESTREO_LUNA);
+        int d = lunaDiametro;
         Object interp = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                 RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g.drawImage(disco, (int) Math.round(lx - r), (int) Math.round(ly - r), d, d, null);
+        g.drawImage(lunaDisco, (int) Math.round(lx - r), (int) Math.round(ly - r), d, d, null);
         if (interp != null) {
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, interp);
         }
@@ -559,7 +718,7 @@ public class Escenario {
      * por donde da el sol y una sombra por el lado contrario. Con la luz
      * viniendo siempre del mismo sitio, el ojo reconstruye el volumen solo.
      */
-    private BufferedImage crearDiscoLunar(int tam) {
+    private BufferedImage crearDiscoLunar(int tam, double edad) {
         BufferedImage img = new BufferedImage(tam, tam, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -735,13 +894,47 @@ public class Escenario {
                 MultipleGradientPaint.CycleMethod.NO_CYCLE));
         g.fill(disco);
 
-        // Terminador suave: una una de sombra en el borde de poniente. Sin
-        // ella el disco se lee plano por muy bien sombreados que esten los
-        // crateres; con ella, es una bola iluminada de lado.
-        g.setPaint(new java.awt.GradientPaint(
-                (float) (c - r), (float) c, new Color(0x0C, 0x0E, 0x18, 175),
-                (float) (c - r * 0.55), (float) c, new Color(0, 0, 0, 0)));
-        g.fill(disco);
+        // Fase.
+        //
+        // Antes habia aqui una una de sombra fija en poniente, que valia para
+        // cualquier noche y para ninguna. Ahora la sombra es la de hoy.
+        //
+        // El terminador de la Luna es una semielipse, no una linea: la parte
+        // clara es media circunferencia por un lado y media elipse por el
+        // otro, con el eje menor proporcional a lo que falta para la llena.
+        // Cuando pasa de la mitad la elipse suma a la parte clara y cuando no
+        // llega, le resta; ahi esta la diferencia entre una gibosa y un
+        // creciente.
+        double k = iluminada(edad);
+        boolean creciente = edad < MES_SINODICO / 2;
+        if (k < 0.995) {
+            double rx = r * Math.abs(1 - 2 * k);
+            java.awt.geom.Area luz = new java.awt.geom.Area(
+                    new java.awt.geom.Rectangle2D.Double(
+                            creciente ? c : c - r - 2, c - r - 2, r + 2, r * 2 + 4));
+            java.awt.geom.Area elipse = new java.awt.geom.Area(
+                    new java.awt.geom.Ellipse2D.Double(c - rx, c - r, rx * 2, r * 2));
+            if (k >= 0.5) {
+                luz.add(elipse);
+            } else {
+                luz.subtract(elipse);
+            }
+            java.awt.geom.Area sombra = new java.awt.geom.Area(disco);
+            sombra.subtract(luz);
+
+            // En capa aparte para poder difuminarla: el terminador real no es
+            // un filo, es una franja de penumbra de varios kilometros.
+            BufferedImage capa = new BufferedImage(tam, tam, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D gs = capa.createGraphics();
+            gs.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            // No negro del todo: la luz cenicienta deja intuir el disco oscuro,
+            // y un mordisco opaco convierte la luna en una pegatina recortada.
+            gs.setColor(new Color(0x08, 0x0B, 0x16, 236));
+            gs.fill(sombra);
+            gs.dispose();
+            g.drawImage(desenfocar(capa, r * 0.030), 0, 0, null);
+        }
 
         g.dispose();
         return img;
@@ -1676,8 +1869,73 @@ public class Escenario {
         if (aaPrevio != null) {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, aaPrevio);
         }
+
+        // Despues de las estrellas y antes de los fuegos: la luna las tapa a
+        // ellas y los cohetes pasan por delante de la luna.
+        pintarLuna(g);
+
         g.setPaint(pinturaPrevia);
         g.setComposite(AlphaComposite.SrcOver);
+    }
+
+    /**
+     * Senda lunar: el camino de luz que la luna deja sobre el agua.
+     *
+     * Es lo que hace que su movimiento se lea de verdad. El disco esta arriba
+     * y es pequeno; el reflejo cruza el agua entera y se desplaza con el, asi
+     * que el ojo lo sigue sin buscarlo.
+     *
+     * Se abre con la distancia porque cada ola devuelve un reflejo desde un
+     * angulo distinto, y cuanto mas lejos mas dispersos son esos angulos. Por
+     * eso una senda lunar es un triangulo y no una columna.
+     */
+    private void pintarSendaLunar(Graphics2D g, int y0, int hAgua) {
+        if (!lunaVisible || lunaY > yHorizonte) {
+            return;
+        }
+        // Se apaga cuando la luna esta baja: rasante, la luz se dispersa y el
+        // camino se deshace.
+        double altura = (yHorizonte - lunaY) / Math.max(1.0, yHorizonte - alto * 0.09);
+        if (altura <= 0.04) {
+            return;
+        }
+        if (altura > 1) {
+            altura = 1;
+        }
+        // La fase pesa: una luna nueva no ilumina el agua.
+        double brillo = altura * (0.25 + 0.75 * iluminada(lunaEdadHorneada));
+        int paso = 3;
+        for (int d = 0; d < hAgua; d += paso) {
+            double prof = (double) d / hAgua;
+            float a = (float) (0.30 * brillo * (1 - prof) * (1 - prof));
+            if (a <= 0.004f) {
+                break;
+            }
+            double medio = lunaRadio * (1.1 + 9.0 * prof);
+            // El centelleo desplaza el centro y estrecha o ensancha la franja:
+            // sin el, la senda es un triangulo pintado y no agua.
+            double onda = Math.sin(d * 0.09 + t * 1.9) * (1 + 6 * prof)
+                    + Math.sin(d * 0.041 - t * 1.15) * (1 + 4 * prof);
+            double ancho2 = medio * (0.75 + 0.25 * Math.sin(d * 0.13 + t * 2.6));
+            double centro = lunaX + onda;
+            // Tres franjas encajadas en vez de una. Con una sola, la senda era
+            // un triangulo plano de bordes rectos; encajadas, la luz se
+            // concentra en el eje y se deshilacha hacia los lados, que es como
+            // se ve de verdad.
+            for (int c = 0; c < 3; c++) {
+                double escala = 1.0 - c * 0.36;
+                int w = (int) Math.round(ancho2 * 2 * escala);
+                if (w <= 0) {
+                    continue;
+                }
+                int alfa = (int) Math.round(a * 255 * (c == 0 ? 0.55 : 0.36));
+                if (alfa <= 0) {
+                    continue;
+                }
+                g.setColor(new Color(0xC8, 0xD8, 0xFF, alfa));
+                g.fillRect((int) Math.round(centro - w / 2.0), y0 + d, w, paso);
+            }
+        }
     }
 
     public void pintarAgua(Graphics2D g, BufferedImage estelas) {
@@ -1696,6 +1954,7 @@ public class Escenario {
 
         g.setComposite(AlphaComposite.SrcOver);
         g.drawImage(aguaBase, 0, y0, null);
+        pintarSendaLunar(g, y0, hAgua);
 
         // Reflejo vivo de la pirotecnia: tiras horizontales espejadas sobre el
         // horizonte, desplazadas por una onda y desvanecidas con la profundidad.
