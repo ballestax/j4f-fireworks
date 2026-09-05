@@ -589,8 +589,18 @@ public class Fireworks extends JPanel {
         escenario.pintarFondo(g);
         g.setComposite(AlphaComposite.SrcOver);
         g.drawImage(estelas, 0, 0, null);
-        escenario.pintarAgua(g, estelas);
+        // La ciudad va antes que el agua.
+        //
+        // Al reves, que era como estaba, el agua se pintaba cuando la ciudad
+        // todavia no existia y por eso no podia reflejarla: se conformaba con
+        // un reflejo horneado de la silueta, siempre igual. En este orden el
+        // agua refleja el fotograma tal y como ha quedado, con los fuegos, la
+        // luna y los edificios como esten iluminados en ese instante.
+        //
+        // El agua ocupa de la linea de horizonte hacia abajo y la ciudad de
+        // ahi hacia arriba, asi que pintarla despues no tapa nada.
         escenario.pintarSkyline(g);
+        escenario.pintarAgua(g, destino);
         pintarResplandor(g, w, h);
         g.setComposite(AlphaComposite.SrcOver);
         pintarInterfaz(g, w, h);
