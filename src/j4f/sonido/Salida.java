@@ -31,4 +31,16 @@ public interface Salida {
 
     /** Nombre corto para mostrar en pantalla. */
     String nombre();
+
+    /**
+     * Banco de estallidos con posicion, o null si esta salida no lo tiene.
+     *
+     * Es la unica grieta deliberada en la fachada MIDI de arriba, y hay un
+     * motivo: MIDI no sabe colocar un sonido en el espacio. El panorama es el
+     * CC10 y va por canal, asi que todos los estallidos sonarian en el mismo
+     * sitio. Las salidas que producen muestras propias sintetizan sus
+     * estallidos aqui; la que solo habla MIDI con un aparato de fuera devuelve
+     * null y se queda con el golpe de percusion de siempre.
+     */
+    Estallidos estallidos();
 }

@@ -465,9 +465,16 @@ public class Fireworks extends JPanel {
             e.actualizar(dt);
             if (e.consumirEstallido()) {
                 encenderResplandor(e);
-                // Golpe grave sincronizado con el destello. Musica lo limita
-                // por su cuenta, asi que una traca no suena a ametralladora.
-                musica.golpe(Azar.entre(0.55, 1.0));
+                // El estallido va con su sitio, no al centro: Musica le pone
+                // el panorama y, sobre todo, el retardo de propagacion. El
+                // destello se ve ahora y el trueno llega despues, como fuera.
+                //
+                // La altura hace de distancia. Lo que estalla arriba esta mas
+                // lejos en la escena, y ademas es lo que de verdad se comporta
+                // como lejano: llega mas tarde, mas sordo y con mas cola.
+                double pan = w > 0 ? (e.getX() / w) * 2 - 1 : 0;
+                double lejos = h > 0 ? 1 - e.getY() / (h * 0.5) : 0.5;
+                musica.golpe(Azar.entre(0.55, 1.0), pan, lejos);
             }
             if (!e.viva()) {
                 explosiones.remove(i);

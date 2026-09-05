@@ -6,6 +6,7 @@ import javax.sound.midi.MidiUnavailableException;
 import javax.sound.midi.Receiver;
 import javax.sound.midi.ShortMessage;
 import javax.sound.midi.Synthesizer;
+import j4f.sonido.Estallidos;
 import j4f.sonido.Salida;
 import j4f.sonido.SalidaSintetizador;
 import j4f.sonido.SalidaGervill;
@@ -555,6 +556,16 @@ public class Musica {
 
     /** Percusion de estallido: tenue y limitada en cadencia. */
     private static final long GOLPE_INTERVALO_MIN_MS = 90;
+    /**
+     * Limite entre estallidos espaciales.
+     *
+     * Mucho mas corto que el de la percusion, y a proposito. Los 90 ms de
+     * arriba existen para que una traca no suene a ametralladora, cuando todos
+     * los golpes salian del mismo sitio y a la vez. Con retardo de propagacion
+     * eso ya no pasa: cada estallido llega cuando le toca segun su distancia,
+     * asi que separarlos a mano solo tira los que dan la sensacion de traca.
+     */
+    private static final long ESTALLIDO_INTERVALO_MIN_MS = 18;
     private static final int VEL_GOLPE_MIN = 20;
     private static final int VEL_GOLPE_MAX = 58;
     private static final int NOTA_BOMBO = 36;   // Bass Drum 1
@@ -1161,6 +1172,7 @@ public class Musica {
 
     /** Ultimo golpe atendido, para el limitador de cadencia. */
     private volatile long ultimoGolpeNs;
+    private volatile long ultimoEstallidoNs;
     /** Notas de percusion pendientes de apagar (-1 = ninguna). */
     private volatile int notaPercusionA = -1;
     private volatile int notaPercusionB = -1;
@@ -1460,10 +1472,44 @@ public class Musica {
      * @param fuerza 0..1, intensidad del estallido.
      */
     public void golpe(double fuerza) {
+        golpe(fuerza, 0.0, 0.5);
+    }
+
+    /**
+     * Estallido con sitio en el espacio.
+     *
+     * @param fuerza de 0 a 1
+     * @param pan    -1 izquierda, 0 centro, 1 derecha
+     * @param lejos  0 delante, 1 al fondo
+     */
+    public void golpe(double fuerza, double pan, double lejos) {
         if (!disponible || silenciada) {
             return;
         }
         long ahora = System.nanoTime();
+
+        // Via espacial: la que de verdad coloca el estallido. Va antes del
+        // limitador de abajo y con un limite mucho mas corto, porque el
+        // retardo de propagacion ya separa los estallidos por si solo: dos
+        // fuegos simultaneos a distinta distancia llegan a los oidos con
+        // decimas de diferencia. Aplicarles el limite de 90 ms pensado para
+        // la percusion se comeria justamente los que mas informacion dan.
+        Salida propio = sintetizadorPropio;
+        Estallidos banco = propio == null ? null : propio.estallidos();
+        if (banco != null) {
+            if (ahora - ultimoEstallidoNs >= ESTALLIDO_INTERVALO_MIN_MS * MS_A_NS) {
+                ultimoEstallidoNs = ahora;
+                banco.programar(fuerza, pan, lejos, ahora);
+            }
+            // La energia visual sube igual: la usa el generador musical.
+            double ev = energiaVisual
+                    + 0.16 * (fuerza < 0 ? 0 : (fuerza > 1 ? 1 : fuerza));
+            energiaVisual = ev > 1 ? 1 : ev;
+            return;
+        }
+
+        // Sin banco de estallidos (salida MIDI a un aparato de fuera) queda el
+        // golpe de percusion de siempre, en el centro y sin retardo.
         if (ahora - ultimoGolpeNs < GOLPE_INTERVALO_MIN_MS * MS_A_NS) {
             return;
         }

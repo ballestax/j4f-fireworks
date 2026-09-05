@@ -42,12 +42,20 @@ public final class Mezclador {
     private final float[] envDer;
 
     private final ColaEventos cola;
+    /**
+     * Estallidos con posicion.
+     *
+     * Van aparte de las voces musicales y no gastan polifonia: un fuego no
+     * tiene por que robarle la voz a un acorde, y al reves tampoco.
+     */
+    private final Estallidos estallidos;
     private volatile int generacionValida;
     private volatile float volumenGeneral = 1f;
     private int robadas;
 
     public Mezclador(double frecMuestreo, int maxBloque, ColaEventos cola) {
         this.cola = cola;
+        this.estallidos = new Estallidos(frecMuestreo);
         this.ruido = new BancoRuido(frecMuestreo, 0x5DEECE66DL);
         this.reverberacion = new Reverberacion(frecMuestreo);
         this.coro = new Coro(frecMuestreo);
@@ -73,6 +81,10 @@ public final class Mezclador {
         coro.ajustar(0.20, 0.15);
         saturacion.ajustar(1.35, 1.25);
         limitador.ajustar(0.92, 90);
+    }
+
+    public Estallidos getEstallidos() {
+        return estallidos;
     }
 
     public void setGeneracion(int g) {
@@ -150,6 +162,10 @@ public final class Mezclador {
                 voz.render(izq, der, envIzq, envDer, n, ruido);
             }
         }
+        // Antes de la reverberacion: los estallidos tambien mandan al bus, y
+        // cuanto mas lejos esta el fuego mas manda, que es lo que los coloca
+        // al fondo en vez de pegados al oyente.
+        estallidos.render(izq, der, envIzq, envDer, n, ahoraNs);
 
         reverberacion.procesar(envIzq, envDer, n);
 
