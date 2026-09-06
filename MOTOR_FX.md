@@ -77,6 +77,15 @@ doble en cada borde.
 
 ## Que no trae esta primera version
 
+- **El agua no refleja la luz 3D.** El reflejo se calcula dentro de
+  `Fireworks.avanzarYComponer`, en AWT, antes de que JavaFX componga la capa
+  3D encima. Asi que el agua refleja la ciudad con la luz plana del motor
+  clasico, no el realce aditivo de la capa 3D. No es un desfase en el tiempo:
+  las dos cosas salen del mismo fotograma y del mismo estado del fogonazo
+  (misma posicion, mismo color, misma energia), solo que dibujadas por dos
+  caminos distintos. Arreglarlo de verdad pide partir la tuberia de
+  `renderizar()` en dos para inyectar una instantanea de la SubScene antes de
+  pintar el agua; queda pendiente.
 - Sin sombras proyectadas: JavaFX no las da sin shaders propios.
 - Sin camara movil: es un escaparate frontal fijo, como el motor clasico.
 - `--emision` (streaming a OBS) no se ha probado con este motor. Para
