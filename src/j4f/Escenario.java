@@ -3,6 +3,7 @@ package j4f;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Composite;
 import java.awt.Graphics2D;
 import java.awt.LinearGradientPaint;
 import java.awt.MultipleGradientPaint;
@@ -224,6 +225,36 @@ public class Escenario {
      * corto y ahorra la mitad del trabajo.
      */
     private static final double HALO_LUNA = 9.0;
+
+    /**
+     * Un edificio, tal y como quedo al hornearse.
+     *
+     * Solo lo que hace falta para volver a iluminarlo: su contorno, su capa de
+     * profundidad y, si la tiene, donde cae su cara de lado y hacia donde
+     * mira.
+     */
+    private static final class Edificio {
+        Shape cuerpo;
+        int capa;
+        int x;
+        int cima;
+        int w;
+        int h;
+        int ladoX;
+        int ladoAncho;
+        int ladoMira;
+    }
+
+    /**
+     * Peso de la luz del fuego por bandas, de la coronacion al pie.
+     *
+     * Tres bastan: con dos se ve el escalon y con cinco no se gana nada que
+     * el ojo distinga a esta escala.
+     */
+    private static final double[] BANDAS_LUZ = {1.0, 0.52, 0.20};
+
+    /** Geometria de la ciudad, viva entre horneados. */
+    private final java.util.List<Edificio> edificios = new java.util.ArrayList<Edificio>();
 
     /** Disco horneado. Se vuelca cada fotograma; hornearlo cuesta demasiado. */
     private BufferedImage lunaDisco;
@@ -1024,6 +1055,7 @@ public class Escenario {
 
         List<int[]> vivas = new ArrayList<int[]>();
         List<int[]> balizas = new ArrayList<int[]>();
+        edificios.clear();
 
         // De la mas lejana a la mas cercana: las de delante tapan a las de atras.
         //
@@ -1157,6 +1189,22 @@ public class Escenario {
             g.clip(cuerpo);
             g.fill(cuerpo);
 
+            // Se guarda la geometria.
+            //
+            // Hasta ahora se calculaba, se dibujaba y se tiraba, y por eso la
+            // luz de los fuegos era un lavado de color sobre toda la franja de
+            // la ciudad: sin saber donde esta cada edificio no hay forma de
+            // iluminar unos si y otros no. Con esto, la luz cae por edificio y
+            // por cara.
+            Edificio ed = new Edificio();
+            ed.cuerpo = cuerpo;
+            ed.capa = capa;
+            ed.x = x;
+            ed.cima = cima;
+            ed.w = w;
+            ed.h = h;
+            edificios.add(ed);
+
             // Cara lateral: un edificio visto de esquina ensena dos caras, y
             // la que no mira al observador va mas oscura. Es lo que le da
             // volumen; una fachada sola se lee como recorte de cartulina.
@@ -1180,6 +1228,11 @@ public class Escenario {
                 g.setColor(Destello.alfa(
                         Destello.mezclar(base, RESPLANDOR_CALLE, 0.50f), 90));
                 g.fillRect(ladoDerecho ? xl : xl + anchoLado - 1, cima, 1, h);
+                ed.ladoX = xl;
+                ed.ladoAncho = anchoLado;
+                // Hacia donde mira la cara de lado: -1 al oeste, 1 al este.
+                // Es lo que decide si un fuego la ilumina o la deja a oscuras.
+                ed.ladoMira = ladoDerecho ? 1 : -1;
                 if (!ladoDerecho) {
                     // Si el lado oscuro queda a la izquierda, las ventanas
                     // deben empezar despues de el.
@@ -1939,6 +1992,98 @@ public class Escenario {
      *              los edificios iluminados por un fuego llegan al agua sin
      *              tener que hacer nada aparte.
      */
+    /**
+     * Ilumina la ciudad con el fogonazo de una explosion.
+     *
+     * Va por edificio y por cara, no por franja. Lo que habia antes era un
+     * lavado de color sobre toda la banda de la ciudad, y un lavado uniforme
+     * no es luz: la luz viene de un sitio, asi que unos edificios se encienden
+     * y otros no, y de los que se encienden lo hace la cara que mira al fuego.
+     * Ahi esta la diferencia entre que la ciudad parpadee y que la ciudad
+     * reciba un fogonazo.
+     *
+     * No se ilumina por pixel a proposito. Un pase aditivo a pantalla completa
+     * por software cuesta entre 4 y 6 ms, y Java2D no tiene mezcla aditiva en
+     * su API publica: solo Porter-Duff. Un poligono translucido sobre la cara
+     * que toca son unos cientos de rellenos y da el mismo resultado, porque
+     * las fachadas ya son planas.
+     *
+     * @param fuerza  1 recien estallado, 0 apagado
+     */
+    public void pintarLuzCiudad(Graphics2D g, double lx, double ly, double radio,
+            Color color, double fuerza) {
+        if (g == null || color == null || fuerza <= 0.02 || edificios.isEmpty()) {
+            return;
+        }
+        // Alcance generoso: un fogonazo de bengala ilumina mucho mas alla de
+        // su bola visible. Por debajo de este radio la luz se corta en seco y
+        // se ve el circulo.
+        double alcance = Math.max(radio * 6.5, ancho * 0.22);
+        double alcance2 = alcance * alcance;
+        Composite compPrevio = g.getComposite();
+        g.setComposite(AlphaComposite.SrcOver);
+
+        for (int i = 0; i < edificios.size(); i++) {
+            Edificio ed = edificios.get(i);
+            // Distancia del fuego al centro de la coronacion, que es la parte
+            // que de verdad recibe la luz: lo de abajo queda a la sombra de
+            // los edificios de delante.
+            double dx = lx - (ed.x + ed.w * 0.5);
+            double dy = ly - ed.cima;
+            double d2 = dx * dx + dy * dy;
+            if (d2 > alcance2) {
+                continue;
+            }
+            // Caida cuadratica, como la de verdad.
+            double caida = 1 - d2 / alcance2;
+            caida *= caida;
+            // Lo cercano recibe mas: esta mas cerca del fuego y ademas menos
+            // atmosfera de por medio.
+            double porCapa = 0.45 + 0.55 * (ed.capa / (double) (CAPAS_CIUDAD - 1));
+            double frontal = fuerza * caida * porCapa;
+            if (frontal < 0.012) {
+                continue;
+            }
+
+            // La fachada, en tres bandas que se apagan hacia abajo.
+            //
+            // De una sola pasada el edificio se tenia entero por igual y
+            // quedaba pintado de dorado, no iluminado. Un fogonazo viene de
+            // arriba: la coronacion se lleva casi toda la luz y el pie queda a
+            // la sombra de los edificios de delante. La caida es lo que separa
+            // una cosa de la otra.
+            int hastaY = ed.cima + (int) (ed.h * 0.72);
+            int altoTotal = hastaY - ed.cima;
+            if (altoTotal <= 0) {
+                continue;
+            }
+            boolean ladoMirando = ed.ladoAncho > 0
+                    && (ed.ladoMira > 0) == (lx > ed.x + ed.w * 0.5);
+            Shape recorte = g.getClip();
+            g.clip(ed.cuerpo);
+            g.setColor(color);
+            for (int b = 0; b < BANDAS_LUZ.length; b++) {
+                float alfa = (float) (frontal * 0.13 * BANDAS_LUZ[b]);
+                if (alfa < 0.004f) {
+                    continue;
+                }
+                int y = ed.cima + altoTotal * b / BANDAS_LUZ.length;
+                int hasta = ed.cima + altoTotal * (b + 1) / BANDAS_LUZ.length;
+                g.setComposite(Destello.mezcla(alfa));
+                g.fillRect(ed.x, y, ed.w, hasta - y);
+                // La cara de lado, solo si mira al fuego. Es lo que hace que
+                // la luz tenga direccion y no sea un tinte: dos torres vecinas
+                // se encienden por caras distintas segun de donde venga.
+                if (ladoMirando) {
+                    g.setComposite(Destello.mezcla(alfa * 1.7f));
+                    g.fillRect(ed.ladoX, y, ed.ladoAncho, hasta - y);
+                }
+            }
+            g.setClip(recorte);
+        }
+        g.setComposite(compPrevio);
+    }
+
     public void pintarAgua(Graphics2D g, BufferedImage marco) {
         if (g == null || !listo()) {
             return;

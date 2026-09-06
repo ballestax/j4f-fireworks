@@ -44,8 +44,16 @@ public class Fireworks extends JPanel {
     private static final double FUERZA_RESPLANDOR = 0.20;
     /** Franjas del lavado; mas franjas, transicion mas suave. */
     private static final int BANDAS_RESPLANDOR = 12;
-    /** Opacidad maxima del lavado sobre la ciudad, de 0 a 255. */
-    private static final int ALFA_LAVADO = 14;
+    /**
+     * Opacidad maxima del lavado sobre la ciudad y el agua, de 0 a 255.
+     *
+     * Baja de 14 a 6 desde que la luz cae por edificio. Ese lavado era todo lo
+     * que habia, y hacia el trabajo de la luz sin serlo: tenia el mismo peso
+     * sobre un edificio junto al fuego que sobre otro al otro extremo. Ahora
+     * la luz la pone pintarLuzCiudad, y esto queda solo para el aire y el
+     * agua, que si se tinen por igual.
+     */
+    private static final int ALFA_LAVADO = 6;
     /** Cuanto sube o baja el volumen con cada pulsacion. */
     private static final double PASO_VOLUMEN = 0.08;
     /** Segundos que permanece en pantalla el aviso de audio. */
@@ -600,6 +608,14 @@ public class Fireworks extends JPanel {
         // El agua ocupa de la linea de horizonte hacia abajo y la ciudad de
         // ahi hacia arriba, asi que pintarla despues no tapa nada.
         escenario.pintarSkyline(g);
+        // La luz del fuego sobre la ciudad, edificio por edificio y cara por
+        // cara. Va aqui, entre la ciudad y el agua, y ese sitio importa: el
+        // agua refleja el fotograma tal y como esta, asi que los edificios
+        // encendidos llegan al reflejo sin hacer nada mas.
+        if (resplandor > 0.001 && resplandorColor != null) {
+            escenario.pintarLuzCiudad(g, resplandorX, resplandorY, resplandorRadio,
+                    resplandorColor, resplandor * resplandor);
+        }
         escenario.pintarAgua(g, destino);
         pintarResplandor(g, w, h);
         g.setComposite(AlphaComposite.SrcOver);
