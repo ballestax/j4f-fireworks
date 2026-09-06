@@ -263,10 +263,9 @@ public final class SalidaGervill implements Salida {
             enviar(ShortMessage.CONTROL_CHANGE, canal, 120, 0);
             enviar(ShortMessage.CONTROL_CHANGE, canal, 123, 0);
         }
-        // Tambien los estallidos: no salen del SoundFont, asi que los mensajes
-        // de arriba no los tocan. Sin esto, silenciar dejaria sonando truenos
-        // ya programados durante casi un segundo.
-        estallidos.panico();
+        // Los estallidos no se tocan aqui: este panico lo dispara silenciar la
+        // musica o cambiar de genero, y un trueno que ya va por el aire debe
+        // llegar igual. Callarlos es un mando aparte.
     }
 
     /** Lee de Gervill, pasa por la cadena propia y vuelca a la tarjeta. */

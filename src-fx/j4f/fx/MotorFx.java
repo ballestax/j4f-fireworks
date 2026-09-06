@@ -159,7 +159,7 @@ public final class MotorFx extends Application {
 
         StackPane raiz = new StackPane(vistaFondo, subEscena3D);
         Scene escena = new Scene(raiz, w, h, Color.BLACK);
-        escena.setOnKeyPressed(e -> manejarTecla(e.getCode()));
+        escena.setOnKeyPressed(e -> manejarTecla(e.getCode(), e.isShiftDown()));
 
         stage.setScene(escena);
         stage.show();
@@ -297,6 +297,25 @@ public final class MotorFx extends Application {
     }
 
     private void manejarTecla(KeyCode k) {
+        manejarTecla(k, false);
+    }
+
+    private void manejarTecla(KeyCode k, boolean mayusculas) {
+        // Con mayusculas, las flechas mueven el volumen de los fuegos en vez
+        // del de la musica, igual que en el motor clasico.
+        if (mayusculas && (k == KeyCode.UP || k == KeyCode.DOWN)) {
+            Musica m = modelo.getMusica();
+            if (k == KeyCode.UP) {
+                m.subirVolumenEstallidos(0.08);
+            } else {
+                m.bajarVolumenEstallidos(0.08);
+            }
+            return;
+        }
+        if (k == KeyCode.N) {
+            modelo.alternarEstallidos();
+            return;
+        }
         switch (k) {
             case F:
             case F11:

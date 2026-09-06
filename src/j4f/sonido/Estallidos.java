@@ -102,12 +102,30 @@ public final class Estallidos {
      */
     private volatile float nivel = 1f;
 
+    /**
+     * Volumen de los estallidos, de 0 a 1, el que maneja quien escucha.
+     *
+     * Aparte del nivel de arriba a proposito: ese es calibracion de la
+     * instalacion, que se pone una vez y no se toca, y este es un mando. Si
+     * fueran el mismo campo, subir el volumen de los estallidos descalibraria
+     * la mezcla.
+     */
+    private volatile float volumen = 1f;
+
     public Estallidos(double frecMuestreo) {
         frec = (float) frecMuestreo;
     }
 
     public void setNivel(float v) {
         nivel = v;
+    }
+
+    public void setVolumen(float v) {
+        volumen = v < 0 ? 0 : (v > 1 ? 1 : v);
+    }
+
+    public float getVolumen() {
+        return volumen;
     }
 
     /**
@@ -264,7 +282,7 @@ public final class Estallidos {
 
     private void renderVoz(int v, float[] izq, float[] der,
             float[] envIzq, float[] envDer, int n) {
-        float n_ = nivel;
+        float n_ = nivel * volumen;
         float gi = ganIzq[v] * n_;
         float gd = ganDer[v] * n_;
         float env = envio[v];

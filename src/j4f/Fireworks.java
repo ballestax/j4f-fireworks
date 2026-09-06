@@ -252,6 +252,24 @@ public class Fireworks extends JPanel {
         mostrarAviso(null);
     }
 
+    /** Calla o devuelve el sonido de los fuegos, sin tocar la musica. */
+    public void alternarEstallidos() {
+        boolean callados = musica.alternarSilencioEstallidos();
+        mostrarAviso(callados ? "FUEGOS EN SILENCIO" : "FUEGOS CON SONIDO");
+    }
+
+    public void subirVolumenEstallidos() {
+        mostrarAviso("FUEGOS " + porciento(musica.subirVolumenEstallidos(PASO_VOLUMEN)));
+    }
+
+    public void bajarVolumenEstallidos() {
+        mostrarAviso("FUEGOS " + porciento(musica.bajarVolumenEstallidos(PASO_VOLUMEN)));
+    }
+
+    private static String porciento(double v) {
+        return Math.round(v * 100) + "%";
+    }
+
     /** Pasa al siguiente genero musical y lo anuncia en pantalla. */
     public void cambiarGenero() {
         Musica.Genero g = musica.siguienteGenero();
@@ -835,9 +853,11 @@ public class Fireworks extends JPanel {
         }
         g.setFont(fuenteAyuda);
         FontMetrics fm = g.getFontMetrics();
-        String[] teclas = {"F", "ESC", "ESPACIO", "T", "G", "M", "+/-", "C", "H", "P", "CLIC"};
+        String[] teclas = {"F", "ESC", "ESPACIO", "T", "G", "M", "+/-", "N",
+            "MAYUS +/-", "C", "H", "P", "CLIC"};
         String[] textos = {"pantalla completa", "salir", "lanzar", "traca",
-            "genero", "musica", "volumen", "color", "hora", "pausa", "apuntar"};
+            "genero", "musica", "volumen", "fuegos", "vol. fuegos",
+            "color", "hora", "pausa", "apuntar"};
 
         int margen = Math.max(18, w / 50);
         int ancho = Math.max(80, w - margen * 2 - anchoHora(g));

@@ -142,10 +142,12 @@ public final class SalidaSintetizador implements Salida {
         Mezclador m = motor.getMezclador();
         if (m != null) {
             m.setGeneracion(generacion);
-            // Los estallidos no pasan por la cola de eventos ni llevan
-            // generacion, asi que el corte de abajo no los alcanza: hay que
-            // vaciarlos aparte o seguirian llegando truenos ya programados.
-            m.getEstallidos().panico();
+            // Los estallidos NO se cortan aqui.
+            //
+            // Este panico lo dispara silenciar la musica y tambien cambiar de
+            // genero, y en los dos casos un trueno que ya va por el aire debe
+            // llegar: es sonido de los fuegos, no de la musica. Callarlos es
+            // un mando aparte, Musica.alternarSilencioEstallidos().
         }
         cola.ofrecer(ColaEventos.TIPO_PANICO, 0, 0, 0, 0, System.nanoTime(), generacion);
     }

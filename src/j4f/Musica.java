@@ -1269,6 +1269,9 @@ public class Musica {
             }
             disponible = true;
             silenciada = false;
+            // El banco de estallidos nace con sus valores por defecto: hay que
+            // ponerle los que tenga puestos quien escucha.
+            aplicarEstallidos();
             // Si no hay pesos, improvisador queda null y manda el generador
             // de reglas. La aplicacion no se entera.
             improvisador = Improvisador.crear();
@@ -1423,6 +1426,82 @@ public class Musica {
         return volumen;
     }
 
+    // ------------------------------------------------------------------
+    // Estallidos: mando propio, separado del de la musica
+    // ------------------------------------------------------------------
+
+    private volatile boolean estallidosSilenciados;
+    private volatile double volumenEstallidos = 1.0;
+
+    /** @return el banco de estallidos de la salida activa, o null si no hay. */
+    private Estallidos bancoEstallidos() {
+        Salida s = sintetizadorPropio;
+        return s == null ? null : s.estallidos();
+    }
+
+    /**
+     * Vuelve a aplicar volumen y silencio de los estallidos.
+     *
+     * Hace falta llamarlo al abrir la salida: el banco nace con sus valores
+     * por defecto y hay que ponerle los que el usuario tuviera puestos.
+     */
+    private void aplicarEstallidos() {
+        Estallidos b = bancoEstallidos();
+        if (b != null) {
+            b.setVolumen((float) (estallidosSilenciados ? 0 : volumenEstallidos));
+        }
+    }
+
+    /**
+     * Calla o devuelve el sonido de los fuegos, al instante.
+     *
+     * Corta tambien lo que este sonando y lo que ya estuviera programado: con
+     * el retardo de propagacion puede haber casi un segundo de truenos en el
+     * aire, y al pulsar callar se espera silencio, no una cola.
+     *
+     * @return true si quedan callados.
+     */
+    public boolean alternarSilencioEstallidos() {
+        estallidosSilenciados = !estallidosSilenciados;
+        Estallidos b = bancoEstallidos();
+        if (b != null) {
+            if (estallidosSilenciados) {
+                b.panico();
+            }
+            aplicarEstallidos();
+        }
+        return estallidosSilenciados;
+    }
+
+    public boolean isEstallidosSilenciados() {
+        return estallidosSilenciados;
+    }
+
+    public double getVolumenEstallidos() {
+        return volumenEstallidos;
+    }
+
+    /**
+     * Ajusta el volumen de los fuegos, de 0 a 1.
+     *
+     * Es independiente del de la musica: no pasa por los canales MIDI, sino
+     * por el banco de estallidos, que se mezcla aparte.
+     */
+    public void setVolumenEstallidos(double v) {
+        volumenEstallidos = v < 0 ? 0 : (v > 1 ? 1 : v);
+        aplicarEstallidos();
+    }
+
+    public double subirVolumenEstallidos(double paso) {
+        setVolumenEstallidos(volumenEstallidos + paso);
+        return volumenEstallidos;
+    }
+
+    public double bajarVolumenEstallidos(double paso) {
+        setVolumenEstallidos(volumenEstallidos - paso);
+        return volumenEstallidos;
+    }
+
     /** Mutea o desmutea al instante, sin parar el generador. */
     public void alternarSilencio() {
         if (!disponible) {
@@ -1483,9 +1562,14 @@ public class Musica {
      * @param lejos  0 delante, 1 al fondo
      */
     public void golpe(double fuerza, double pan, double lejos) {
-        if (!disponible || silenciada) {
+        if (!disponible) {
             return;
         }
+        // Ojo con lo que NO se mira aqui: el silencio de la musica.
+        //
+        // Antes se miraba, y por eso callar la musica callaba tambien los
+        // fuegos. Son dos cosas distintas: se puede querer el espectaculo con
+        // sus truenos y sin musica, o al reves. Cada uno tiene su interruptor.
         long ahora = System.nanoTime();
 
         // Via espacial: la que de verdad coloca el estallido. Va antes del
@@ -1497,6 +1581,9 @@ public class Musica {
         Salida propio = sintetizadorPropio;
         Estallidos banco = propio == null ? null : propio.estallidos();
         if (banco != null) {
+            if (estallidosSilenciados) {
+                return;
+            }
             if (ahora - ultimoEstallidoNs >= ESTALLIDO_INTERVALO_MIN_MS * MS_A_NS) {
                 ultimoEstallidoNs = ahora;
                 banco.programar(fuerza, pan, lejos, ahora);

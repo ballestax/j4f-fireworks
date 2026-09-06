@@ -584,6 +584,27 @@ public class J4F {
         for (int i = 0; i < teclasBajar.length; i++) {
             atajo(teclasBajar[i], "bajarVolumen" + i, bajar);
         }
+        // Los fuegos llevan su propio volumen y su propio silencio: con
+        // mayusculas sobre las mismas flechas, y N para callarlos. Asi se
+        // puede quitar la musica y quedarse con los truenos, o al reves.
+        atajo("shift UP", "subirEstallidos", new Runnable() {
+            @Override
+            public void run() {
+                panel.subirVolumenEstallidos();
+            }
+        });
+        atajo("shift DOWN", "bajarEstallidos", new Runnable() {
+            @Override
+            public void run() {
+                panel.bajarVolumenEstallidos();
+            }
+        });
+        atajo("N", "estallidos", new Runnable() {
+            @Override
+            public void run() {
+                panel.alternarEstallidos();
+            }
+        });
         atajo("C", "colorCiudad", new Runnable() {
             @Override
             public void run() {
