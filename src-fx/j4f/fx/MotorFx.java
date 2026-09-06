@@ -11,8 +11,8 @@ import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Point3D;
-import javafx.scene.AmbientLight;
 import javafx.scene.Group;
+import javafx.scene.effect.BlendMode;
 import javafx.scene.ParallelCamera;
 import javafx.scene.Scene;
 import javafx.scene.SubScene;
@@ -71,8 +71,19 @@ public final class MotorFx extends Application {
      */
     private static final double PASO_CAPA = 36.0;
 
-    /** Color base de un edificio sin luz encima: casi negro, con algo de azul. */
-    private static final Color TONO_EDIFICIO = Color.rgb(0x10, 0x14, 0x22);
+    /**
+     * Color base de la fachada, el que responde a la luz.
+     *
+     * Es un gris medio y no un negro, aunque la capa vaya en aditivo. Con
+     * difuso negro el termino difuso de Phong sale cero por mucha luz que le
+     * de, y los edificios no se encenderian.
+     *
+     * Lo que los apaga cuando no hay fuego no es este color: es que en la
+     * escena 3D no hay luz ambiente ninguna. Sin luz que reciba, la cara
+     * renderiza negra, y en aditivo el negro no suma, asi que el fondo 2D
+     * pasa intacto con sus ventanas encendidas.
+     */
+    private static final Color TONO_EDIFICIO = Color.rgb(0x8E, 0x96, 0xAA);
 
     private final Fireworks modelo = new Fireworks();
 
@@ -115,17 +126,34 @@ public final class MotorFx extends Application {
         edificios3D = new Group();
         luzFogonazo = new PointLight(Color.TRANSPARENT);
         luzFogonazo.setTranslateZ(-260);
-        AmbientLight ambiente = new AmbientLight(Color.rgb(0x30, 0x36, 0x4a, 0.55));
-        // Luz de luna: fija, tenue, un poco azulada, para que los edificios no
-        // se lean como cajas negras cuando no hay fogonazo.
-        PointLight luna = new PointLight(Color.rgb(0xC8, 0xD8, 0xFF, 0.28));
-        luna.setTranslateX(w * 0.78);
-        luna.setTranslateY(-h * 0.3);
-        luna.setTranslateZ(-600);
-        Group raiz3D = new Group(ambiente, luna, luzFogonazo, edificios3D);
+        // Atenuacion y alcance.
+        //
+        // Sin esto una PointLight de JavaFX alumbra igual a un metro que al
+        // otro lado del mapa: no atenua por defecto. El resultado era la
+        // ciudad entera banada en dorado a la vez, que no es luz de fuego,
+        // es un filtro de color. Con caida cuadratica y un alcance de media
+        // pantalla, se enciende lo que esta cerca del estallido y lo demas
+        // se queda como estaba, igual que hace el motor clasico.
+        luzFogonazo.setConstantAttenuation(1.0);
+        luzFogonazo.setLinearAttenuation(0.0);
+        luzFogonazo.setQuadraticAttenuation(3.0e-5);
+        // Sin luz ambiente y sin luz de luna fija.
+        //
+        // Las dos estaban aqui al principio, para que los edificios no se
+        // leyeran como cajas negras. Con la capa en aditivo sobran las dos y
+        // ademas estorban: lo que aportan es un brillo constante sobre toda
+        // la ciudad, y lo que hay debajo no es un vacio negro, es el skyline
+        // ya pintado con sus ventanas. La capa 3D solo tiene que aportar la
+        // luz del fuego; de la ciudad apagada ya se encarga el fondo.
+        Group raiz3D = new Group(luzFogonazo, edificios3D);
 
         subEscena3D = new SubScene(raiz3D, w, h, true, SceneAntialiasing.BALANCED);
         subEscena3D.setFill(Color.TRANSPARENT);
+        // Mezcla aditiva: esto es lo que Java2D no tiene y era el motivo de
+        // traer JavaFX. Lo que no recibe luz es negro, y sumar negro no
+        // cambia nada, asi que las ventanas encendidas del fondo 2D se ven
+        // intactas y el fogonazo se suma encima en vez de taparlas.
+        subEscena3D.setBlendMode(BlendMode.ADD);
         ParallelCamera camara = new ParallelCamera();
         subEscena3D.setCamera(camara);
 
@@ -260,11 +288,12 @@ public final class MotorFx extends Application {
             luzFogonazo.setColor(Color.TRANSPARENT);
             return;
         }
+        luzFogonazo.setMaxRange(subEscena3D.getWidth() * 0.55);
         luzFogonazo.setTranslateX(modelo.getResplandorX());
         luzFogonazo.setTranslateY(modelo.getResplandorY());
         double e = energia > 1 ? 1 : energia;
         luzFogonazo.setColor(Color.rgb(c.getRed(), c.getGreen(), c.getBlue(), 1.0)
-                .deriveColor(0, 1, 0.4 + 1.6 * e, 1));
+                .deriveColor(0, 1, 0.30 + 0.85 * e, 1));
     }
 
     private void manejarTecla(KeyCode k) {
