@@ -243,6 +243,11 @@ public class Escenario {
         int ladoX;
         int ladoAncho;
         int ladoMira;
+        /** Ancho y borde izquierdo a la altura de la cima, ya con la sangria. */
+        int xCima;
+        int anchoCima;
+        /** Cota mas alta que alcanza el remate: agujas, maquinaria, antenas. */
+        int cimaRemate;
     }
 
     /**
@@ -1318,7 +1323,13 @@ public class Escenario {
             g.setClip(recorteEdificio);
             int sangriaCima = sangriaEn(cima, h, w, cima, merma,
                     alturaRetranqueo, mermaRetranqueo);
-            pintarRemate(g, x + sangriaCima, cima, w - 2 * sangriaCima, h,
+            ed.xCima = x + sangriaCima;
+            ed.anchoCima = w - 2 * sangriaCima;
+            // El valor que devuelve pintarRemate se estaba tirando. Es la cota
+            // que alcanzan agujas y maquinaria, y sin ella la geometria del
+            // edificio termina en la cima: por eso la luz de los fuegos no
+            // llegaba a los picos en el motor hibrido, se quedaba en el cuerpo.
+            ed.cimaRemate = pintarRemate(g, ed.xCima, cima, ed.anchoCima, h,
                     base, cercania, balizas);
 
             if (capa > 0) {
@@ -2083,10 +2094,38 @@ public class Escenario {
      * que conocer Java2D.
      */
     public java.util.List<int[]> getGeometriaEdificios() {
-        java.util.List<int[]> filas = new java.util.ArrayList<int[]>(edificios.size());
+        java.util.List<int[]> filas = new java.util.ArrayList<int[]>(edificios.size() * 3);
         for (int i = 0; i < edificios.size(); i++) {
             Edificio ed = edificios.get(i);
-            filas.add(new int[]{ed.x, ed.cima, ed.w, ed.h, ed.capa, ed.ladoMira});
+            int anchoCima = ed.anchoCima > 0 ? ed.anchoCima : ed.w;
+            int xCima = ed.anchoCima > 0 ? ed.xCima : ed.x;
+
+            // Tres volumenes por edificio y no uno envolvente.
+            //
+            // Con una sola caja del ancho de la base pasaban dos cosas: en una
+            // torre afilada la caja sobraba por los lados arriba y la luz se
+            // derramaba al cielo, y el remate quedaba fuera del todo, asi que
+            // los picos no se iluminaban nunca. Partiendolo en cuerpo bajo,
+            // cuerpo alto y remate, el volumen sigue la silueta de verdad.
+            int altoBajo = (int) Math.round(ed.h * 0.55);
+            int altoAlto = ed.h - altoBajo;
+            if (altoBajo > 0) {
+                filas.add(new int[]{ed.x, ed.cima + altoAlto, ed.w, altoBajo,
+                    ed.capa, ed.ladoMira});
+            }
+            if (altoAlto > 0) {
+                filas.add(new int[]{xCima, ed.cima, anchoCima, altoAlto,
+                    ed.capa, ed.ladoMira});
+            }
+            int altoRemate = ed.cima - ed.cimaRemate;
+            if (altoRemate > 0) {
+                // Mas estrecho que la cima: lo que sobresale es maquinaria,
+                // una aguja o una antena, nunca la planta entera. Con el ancho
+                // completo, un mastil de dos pixeles alumbraria como una casa.
+                int anchoRemate = Math.max(2, (int) Math.round(anchoCima * 0.55));
+                filas.add(new int[]{xCima + (anchoCima - anchoRemate) / 2,
+                    ed.cimaRemate, anchoRemate, altoRemate, ed.capa, 0});
+            }
         }
         return filas;
     }
