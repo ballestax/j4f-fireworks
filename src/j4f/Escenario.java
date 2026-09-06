@@ -614,7 +614,17 @@ public class Escenario {
      * directo, a cambio de no rehornear nada en los otros veinte mil.
      */
     private void hornearLuna() {
-        double edad = edadLunar();
+        hornearLuna(edadLunar());
+    }
+
+    /**
+     * Hornea con una edad lunar dada.
+     *
+     * Separado del de arriba para poder pedirle una fase concreta desde los
+     * bancos de pruebas: la de hoy es la que es, y no se puede juzgar como
+     * queda un cuarto creciente esperando una semana.
+     */
+    private void hornearLuna(double edad) {
         double r = Math.max(2.0, alto * 0.032);
         int d = Math.max(2, (int) Math.round(r * 2));
         // 0.05 dias son 72 minutos, y en ese rato la fraccion iluminada se
@@ -634,17 +644,32 @@ public class Escenario {
         // moverse el halo pasaba a escalarse con interpolacion bilineal en
         // cada fotograma: 449 pixeles de lado, medidos en +4,8 ms. Horneado
         // una vez, el volcado va uno a uno y sin remuestreo.
-        int lado = Math.max(d + 4, (int) Math.round(r * HALO_LUNA));
+        // El halo mengua con la fase.
+        //
+        // Antes era siempre el mismo, y ese era el fallo que hacia que una
+        // luna en cuarto no pareciera una luna en cuarto: un creciente fino
+        // salia rodeado del mismo resplandor que una llena, y entonces la
+        // parte oscura se leia como una bola negra dentro de un farol. Lo que
+        // brilla es la parte iluminada, asi que el halo tiene que seguirla.
+        // Cuadratico, no lineal. Con una caida suave el creciente fino se
+        // quedaba con un quinto del resplandor de la llena, y como el disco
+        // apagado es transparente, ese resplandor se veia por el agujero: la
+        // luna parecia una bola de cristal iluminada por dentro. Al cuadrado,
+        // un creciente del tres por ciento apenas tiene halo, que es lo que
+        // pasa de verdad.
+        double k = iluminada(edad);
+        float fuerzaHalo = (float) (0.05 + 0.95 * k * k);
+        int lado = Math.max(d + 4, (int) Math.round(r * HALO_LUNA * (0.45 + 0.55 * k)));
         lunaHaloLado = lado;
         BufferedImage halo = new BufferedImage(lado, lado, BufferedImage.TYPE_INT_ARGB);
         Graphics2D gh = halo.createGraphics();
         BufferedImage brocha = Destello.de(new Color(200, 216, 255));
         gh.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                 RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        gh.setComposite(Destello.mezcla(0.30f));
+        gh.setComposite(Destello.mezcla(0.30f * fuerzaHalo));
         gh.drawImage(brocha, 0, 0, lado, lado, null);
-        int estrecho = Math.max(4, (int) Math.round(r * 5));
-        gh.setComposite(Destello.mezcla(0.55f));
+        int estrecho = Math.max(4, (int) Math.round(r * 5 * (0.55 + 0.45 * k)));
+        gh.setComposite(Destello.mezcla(0.55f * fuerzaHalo));
         gh.drawImage(brocha, (lado - estrecho) / 2, (lado - estrecho) / 2,
                 estrecho, estrecho, null);
         gh.dispose();
@@ -978,12 +1003,51 @@ public class Escenario {
             Graphics2D gs = capa.createGraphics();
             gs.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                     RenderingHints.VALUE_ANTIALIAS_ON);
-            // No negro del todo: la luz cenicienta deja intuir el disco oscuro,
-            // y un mordisco opaco convierte la luna en una pegatina recortada.
-            gs.setColor(new Color(0x08, 0x0B, 0x16, 236));
+            // La sombra no se pinta: se borra.
+            //
+            // Aqui estaba el fallo. La parte no iluminada se rellenaba de gris
+            // oscuro, y eso da una bola negra metida dentro del halo, que es
+            // justo lo que no se parece a una luna en fase. En el cielo de
+            // verdad esa parte no es oscura: no esta. No hay nada que ver, se
+            // ve el cielo de detras.
+            //
+            // Asi que la mascara se compone con DstOut, restando alfa al
+            // disco: donde hay sombra, el disco se vuelve transparente y pasa
+            // el cielo con su halo. Lo que queda colgado es el creciente, sin
+            // mordisco ni pegatina.
+            gs.setColor(Color.BLACK);
             gs.fill(sombra);
             gs.dispose();
-            g.drawImage(desenfocar(capa, r * 0.030), 0, 0, null);
+            BufferedImage mascara = desenfocar(capa, r * 0.038);
+
+            Composite antes = g.getComposite();
+            g.setComposite(AlphaComposite.DstOut);
+            g.drawImage(mascara, 0, 0, null);
+            g.setComposite(antes);
+
+            // Luz cenicienta: el sol rebota en la Tierra y alumbra de vuelta
+            // la cara nocturna de la Luna. Es lo que se llama "la luna vieja
+            // en brazos de la nueva".
+            //
+            // Es mas fuerte cuanto mas fino es el creciente, no al reves: en
+            // luna nueva la Tierra esta llena vista desde alli, y a partir del
+            // cuarto ya no se aprecia. De ahi que decaiga con la fase y se
+            // apague del todo en el cuarto.
+            float ceniza = (float) Math.max(0, 1 - 2 * k);
+            if (ceniza > 0.05f) {
+                Shape recorte = g.getClip();
+                g.clip(sombra);
+                g.setPaint(new RadialGradientPaint(
+                        new Point2D.Double(c, c), (float) r,
+                        new float[]{0f, 0.70f, 1f},
+                        new Color[]{
+                            new Color(0x8A, 0x93, 0xB0, (int) (26 * ceniza)),
+                            new Color(0x7A, 0x84, 0xA4, (int) (16 * ceniza)),
+                            new Color(0x6A, 0x74, 0x96, 0)},
+                        MultipleGradientPaint.CycleMethod.NO_CYCLE));
+                g.fill(sombra);
+                g.setClip(recorte);
+            }
         }
 
         g.dispose();
