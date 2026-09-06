@@ -9,8 +9,15 @@ nbproject/private/
 herramientas/datos/
 herramientas/salida/
 
-# Bancos de sonido: assets grandes, se descargan aparte
-sonido/
+# Bancos de sonido: assets grandes, se descargan aparte.
+#
+# Con barra inicial a proposito: sin ella, "sonido/" coincide con cualquier
+# carpeta de ese nombre a cualquier profundidad, y eso incluye el paquete
+# src/j4f/sonido/. Asi es como SalidaGervill.java y Estallidos.java llevaban
+# ignorados en silencio desde que se crearon: compilaban porque el archivo
+# seguia en el disco, pero nunca llegaron a un commit. Un clon limpio del
+# repositorio no habria compilado.
+/sonido/
 
 # Muestras de audio: pesan y se regeneran con el volcado
 canal/audio/
