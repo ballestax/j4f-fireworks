@@ -163,7 +163,12 @@ public final class Mezclador {
                 if (voz.getFinNs() != 0 && ahoraNs - voz.getFinNs() >= 0) {
                     voz.soltar();
                 }
-                voz.render(izq, der, envIzq, envDer, n, ruido);
+                // Al cuadrado, que es como venia actuando el volumen de capa
+                // cuando se aplicaba escalando la velocidad (amplitud = v*v).
+                // Se conserva la curva y solo cambia el cuando: ahora por
+                // muestra, no al disparar la nota.
+                float gc = volumenCapa[voz.getCapa()];
+                voz.render(izq, der, envIzq, envDer, n, ruido, gc * gc);
             }
         }
         // Antes de la reverberacion: los estallidos tambien mandan al bus, y
@@ -242,8 +247,15 @@ public final class Mezclador {
             voces[libre].cortar();
             robadas++;
         }
-        float vol = volumenCapa[capa];
-        int vel = (int) (velocidad * vol);
+        // La velocidad ya no se escala con el volumen de la capa.
+        //
+        // Lo hacia, y eso ataba el volumen al momento del disparo: una nota
+        // sostenida se quedaba con el volumen que hubiera al empezar. El pad
+        // aguanta acordes durante segundos, asi que bajar el volumen dejaba
+        // el ambiente intacto y solo bajaba lo que iba entrando. Ademas la
+        // velocidad no es solo nivel, tambien abre el filtro: bajar el
+        // volumen apagaba el timbre de paso.
+        int vel = velocidad;
         if (vel < 1) {
             vel = 1;
         }

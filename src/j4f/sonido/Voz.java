@@ -33,6 +33,8 @@ public final class Voz {
     private float incremento;
     private float incrementoDestemple;
     private float amplitud;
+    /** Ganancia de capa aplicada ahora mismo, para llegar con rampa a la nueva. */
+    private float ganCapaActual = 1f;
     private float ganIzq;
     private float ganDer;
     private float envio;
@@ -203,12 +205,23 @@ public final class Voz {
      * Renderiza n muestras sumandolas a las mezclas seca y de reverberacion.
      * No asigna memoria: es el bucle critico.
      */
+    /**
+     * @param ganCapa ganancia de la capa a la que pertenece esta voz, ahora
+     * mismo. Se aplica por muestra y no al disparar la nota: si se aplicara
+     * al disparar, bajar el volumen no tocaria lo que ya esta sonando, y un
+     * pad que sostiene un acorde durante segundos se quedaria a su volumen
+     * viejo mientras el resto baja. Era justo lo que pasaba.
+     */
     public void render(float[] izq, float[] der, float[] envIzq, float[] envDer,
-            int n, BancoRuido ruido) {
+            int n, BancoRuido ruido, float ganCapa) {
         if (!enUso) {
             return;
         }
         float[] onda = tabla;
+
+        // Rampa lineal hasta la ganancia nueva a lo largo del bloque. Saltar
+        // de golpe a mitad de una nota sostenida se oye como un chasquido.
+        float ganPaso = n > 0 ? (ganCapa - ganCapaActual) / n : 0;
 
         // Coeficiente del filtro para este bloque. El corte va en multiplos
         // de la fundamental; las constantes de tiempo del brillo son de

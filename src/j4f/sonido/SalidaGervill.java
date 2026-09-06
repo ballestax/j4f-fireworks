@@ -44,7 +44,20 @@ public final class SalidaGervill implements Salida {
      * Ganancia de compensacion. El banco entrega bastante menos que fondo de
      * escala y la cadena de efectos espera niveles de trabajo.
      */
-    private static final float GANANCIA = 3.2f;
+    /**
+     * Ganancia de la cadena.
+     *
+     * Estaba en 3,2 y con eso la musica salia a 34 decibelios por debajo de
+     * fondo de escala de pico y a 47 de RMS: treinta decibelios por debajo de
+     * donde deberia estar una mezcla. El efecto no es que sonara bajita y ya,
+     * es que obliga a subir el volumen del sistema para oir la musica, y
+     * entonces cualquier estallido llega al altavoz muy por encima.
+     *
+     * Ese era el desequilibrio de fondo detras de "se distorsiona" y de "los
+     * estallidos no se escuchan": no era el nivel de los estallidos, era el
+     * de la musica. El limitador se sigue encargando de los picos.
+     */
+    private static final float GANANCIA = 60f;
 
     private Synthesizer sintetizador;
     private AudioInputStream flujo;
