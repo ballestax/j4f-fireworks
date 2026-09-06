@@ -56,6 +56,10 @@ public final class Mezclador {
     public Mezclador(double frecMuestreo, int maxBloque, ColaEventos cola) {
         this.cola = cola;
         this.estallidos = new Estallidos(frecMuestreo);
+        // Las voces de aqui son tenues y el bus las levanta por GANANCIA_MAESTRA.
+        // Un estallido sale ya a escala completa, asi que hay que bajarlo en la
+        // misma proporcion o entra al limitador multiplicado por once.
+        this.estallidos.setNivel(0.42f / GANANCIA_MAESTRA);
         this.ruido = new BancoRuido(frecMuestreo, 0x5DEECE66DL);
         this.reverberacion = new Reverberacion(frecMuestreo);
         this.coro = new Coro(frecMuestreo);

@@ -88,8 +88,26 @@ public final class Estallidos {
 
     private final AzarRapido azar = new AzarRapido(0x513A11D05L);
 
+    /**
+     * Cuanto vale un estallido a plena fuerza en la escala del bus que lo
+     * acoge, antes del limitador.
+     *
+     * Hace falta porque los dos buses trabajan a escalas muy distintas: el
+     * mezclador propio multiplica sus voces por 11 (son tenues de por si) y
+     * la cadena de Gervill por 3,2. Un estallido sintetizado aqui sale a
+     * amplitud cercana a 1, o sea escala completa, asi que sumado tal cual al
+     * mezclador entraba al limitador quince veces por encima de su techo.
+     * Eso no se oye como un estallido fuerte, se oye como distorsion: el
+     * limitador se queda clavado y aplasta tambien la musica.
+     */
+    private volatile float nivel = 1f;
+
     public Estallidos(double frecMuestreo) {
         frec = (float) frecMuestreo;
+    }
+
+    public void setNivel(float v) {
+        nivel = v;
     }
 
     /**
@@ -246,8 +264,9 @@ public final class Estallidos {
 
     private void renderVoz(int v, float[] izq, float[] der,
             float[] envIzq, float[] envDer, int n) {
-        float gi = ganIzq[v];
-        float gd = ganDer[v];
+        float n_ = nivel;
+        float gi = ganIzq[v] * n_;
+        float gd = ganDer[v] * n_;
         float env = envio[v];
         float fase = golpeFase[v];
         float inc = golpeInc[v];

@@ -66,8 +66,20 @@ public final class SalidaGervill implements Salida {
     private final byte[] salida = new byte[BLOQUE * 4];
     private final float[] izq = new float[BLOQUE];
     private final float[] der = new float[BLOQUE];
-    /** Los estallidos no vienen del SoundFont: se sintetizan aqui. */
-    private final Estallidos estallidos = new Estallidos(FRECUENCIA);
+    /**
+     * Los estallidos no vienen del SoundFont: se sintetizan aqui.
+     *
+     * Su nivel es mucho mas alto que en el mezclador propio porque este bus
+     * trabaja a otra escala: aqui las muestras ya llegan multiplicadas por
+     * GANANCIA y los estallidos se suman despues, sin ganancia detras.
+     */
+    private final Estallidos estallidos = crearEstallidos();
+
+    private static Estallidos crearEstallidos() {
+        Estallidos e = new Estallidos(FRECUENCIA);
+        e.setNivel(0.42f);
+        return e;
+    }
 
     /** @return el fichero de banco a usar, o null si no hay ninguno. */
     public static File buscarBanco() {
