@@ -2148,7 +2148,7 @@ public class Musica {
      * Le pasa al agente el resultado de la seccion que acaba.
      *
      * La actividad se mide en notas por segundo normalizadas; la recompensa es
-     * alta cuando la musica acompaña a lo que estaba pasando en pantalla.
+     * alta cuando la musica acompana a lo que estaba pasando en pantalla.
      */
     private void cerrarSeccionAnteAgente(long ahoraNs) {
         if (seccionesTocadas == 0) {
