@@ -287,6 +287,53 @@ public class Fireworks extends JPanel {
     }
 
     /** Pide un cohete en la x indicada. Seguro desde cualquier hilo. */
+    /**
+     * Avanza la simulacion y compone el fotograma, para motores que llevan su
+     * propio bucle de fotogramas y no usan el hilo Animacion de Swing.
+     *
+     * Es exactamente lo que hace bucle() en cada vuelta: ajustar tamano,
+     * actualizar, pintar las estelas y componer. El motor hibrido de JavaFX
+     * (src-fx/j4f/fx/MotorFx.java) lo llama desde su propio AnimationTimer y
+     * vuelca el resultado como textura de fondo bajo su capa 3D; el resto de
+     * la escena (fuegos, cielo, luna, agua, niebla) sale de aqui sin tocar.
+     */
+    public void avanzarYComponer(double dt, BufferedImage destino, int w, int h) {
+        ajustarTamano(w, h);
+        actualizar(dt, w, h);
+        dibujarEstelas(dt, w, h);
+        renderizar(destino, w, h);
+    }
+
+    /**
+     * Geometria de la ciudad para el motor hibrido.
+     *
+     * Cada fila es {x, cima, w, h, capa, mira} en pixeles de escena: mira vale
+     * -1 si la cara de lado del edificio mira al oeste, 1 al este, 0 si no
+     * tiene cara de lado. Es la misma geometria que usa pintarLuzCiudad, en
+     * forma de datos llanos para no exponer Shape ni el tipo interno Edificio
+     * fuera de Escenario.
+     */
+    public java.util.List<int[]> getGeometriaEdificios() {
+        return escenario.getGeometriaEdificios();
+    }
+
+    /** @return intensidad del fogonazo actual, la misma que colorea la ciudad. */
+    public double getEnergiaResplandor() {
+        return resplandor * resplandor;
+    }
+
+    public double getResplandorX() {
+        return resplandorX;
+    }
+
+    public double getResplandorY() {
+        return resplandorY;
+    }
+
+    public Color getResplandorColor() {
+        return resplandorColor;
+    }
+
     public void lanzarEn(double x) {
         pendientes.add(Double.valueOf(x));
     }

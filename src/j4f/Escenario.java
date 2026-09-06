@@ -2010,6 +2010,23 @@ public class Escenario {
      *
      * @param fuerza  1 recien estallado, 0 apagado
      */
+    /**
+     * Geometria llana de la ciudad, para consumidores fuera de este paquete.
+     *
+     * Fila: {x, cima, w, h, capa, mira}. Se devuelve como datos y no como los
+     * Edificio internos para no filtrar Shape (tipo de AWT) hacia el motor
+     * hibrido de JavaFX, que vive en su propio arbol de fuentes y no tiene por
+     * que conocer Java2D.
+     */
+    public java.util.List<int[]> getGeometriaEdificios() {
+        java.util.List<int[]> filas = new java.util.ArrayList<int[]>(edificios.size());
+        for (int i = 0; i < edificios.size(); i++) {
+            Edificio ed = edificios.get(i);
+            filas.add(new int[]{ed.x, ed.cima, ed.w, ed.h, ed.capa, ed.ladoMira});
+        }
+        return filas;
+    }
+
     public void pintarLuzCiudad(Graphics2D g, double lx, double ly, double radio,
             Color color, double fuerza) {
         if (g == null || color == null || fuerza <= 0.02 || edificios.isEmpty()) {

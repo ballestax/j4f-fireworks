@@ -21,3 +21,11 @@ herramientas/salida/
 
 # Muestras de audio: pesan y se regeneran con el volcado
 canal/audio/
+
+# Jars de OpenJFX y clases del motor hibrido (opcional): se generan con
+# herramientas/PrepararMotorFx.java y no se comitean, igual que el banco de
+# sonido. Con barra inicial: sin ella, "lib-fx/" coincidiria con cualquier
+# carpeta de ese nombre a cualquier profundidad, que es justo el bug que
+# se corrigio para "sonido/" mas arriba.
+/lib-fx/
+/build-fx/

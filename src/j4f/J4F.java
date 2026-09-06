@@ -14,6 +14,7 @@ import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import javax.swing.AbstractAction;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
@@ -28,7 +29,9 @@ import javax.swing.SwingUtilities;
  * P pausa y F3 muestra el contador de fotogramas.
  *
  * Linea de ordenes: --emision para un directo, --genero &lt;nombre&gt; para
- * quedarse en un solo genero y --rotar (por defecto) para ir cambiando.
+ * quedarse en un solo genero, --rotar (por defecto) para ir cambiando, y
+ * --motor java2d|javafx para elegir el motor de dibujo. Sin --motor se
+ * pregunta por pantalla (salvo en --emision, que siempre usa java2d).
  *
  * @author ballestas
  */
@@ -63,6 +66,16 @@ public class J4F {
      */
     private static boolean exclusiva = true;
 
+    /**
+     * Motor de dibujo: "java2d" (de siempre) o "javafx" (hibrido, con los
+     * edificios en 3D y luz real de las explosiones). Null si no se ha
+     * decidido todavia: entonces se pregunta, salvo en emision.
+     *
+     * Vease MOTOR_FX.md para como esta montado el motor hibrido y por que
+     * corre en un proceso aparte.
+     */
+    private static String motor;
+
     public static void main(String[] args) {
         for (int i = 0; i < args.length; i++) {
             String a = args[i].toLowerCase();
@@ -79,17 +92,73 @@ public class J4F {
             } else if ((a.equals("--genero") || a.equals("-g")) && i + 1 < args.length) {
                 i++;
                 generoFijo = generoDe(args[i].toLowerCase());
+            } else if (a.startsWith("--motor=")) {
+                motor = motorDe(a.substring("--motor=".length()));
+            } else if ((a.equals("--motor") || a.equals("-m")) && i + 1 < args.length) {
+                i++;
+                motor = motorDe(args[i].toLowerCase());
             } else if (a.equals("--ayuda") || a.equals("-h") || a.equals("--help")) {
                 uso();
                 return;
             }
         }
+
+        if (motor == null) {
+            // Sin --motor en la linea de ordenes: se pregunta, que es lo que
+            // se pidio ("poder escoger el motor al lanzar la app"). En
+            // emision no se pregunta nunca: un directo de 24 horas no puede
+            // quedarse esperando un clic que nadie va a dar, y el motor
+            // clasico es el que esta medido y probado para eso.
+            motor = modoEmision ? "java2d" : elegirMotor();
+        }
+
+        if (motor.equals("javafx")) {
+            System.exit(lanzarMotorHibrido(args));
+            return;
+        }
+
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
                 construir();
             }
         });
+    }
+
+    private static String motorDe(String nombre) {
+        String n = nombre.trim().toLowerCase();
+        if (n.equals("java2d") || n.equals("clasico") || n.equals("classic")) {
+            return "java2d";
+        }
+        if (n.equals("javafx") || n.equals("fx") || n.equals("hibrido") || n.equals("hybrid")) {
+            return "javafx";
+        }
+        System.err.println("Motor desconocido: " + nombre);
+        System.err.println("Disponibles: java2d, javafx");
+        System.exit(2);
+        return null;
+    }
+
+    /**
+     * Pregunta que motor usar. Se llama antes de montar nada: por eso es
+     * seguro invocar Swing aqui sin pasar por el hilo de eventos todavia.
+     *
+     * @return "java2d" tambien si se cierra el dialogo sin elegir: es el
+     * motor de siempre, y quedarse sin abrir nada por un Escape accidental
+     * seria peor que arrancar con el de toda la vida.
+     */
+    private static String elegirMotor() {
+        Object[] opciones = {"Motor clasico (Java2D)", "Motor hibrido (JavaFX, edificios 3D)"};
+        int eleccion = javax.swing.JOptionPane.showOptionDialog(null,
+                "El motor clasico es el de siempre: cero dependencias, Java 8.\n"
+                + "El motor hibrido anade edificios en 3D con luz real de las\n"
+                + "explosiones, pero necesita un Java 11 o mas moderno instalado\n"
+                + "aparte y arranca en un proceso propio (unos segundos mas).",
+                "Fireworks: elegir motor",
+                javax.swing.JOptionPane.DEFAULT_OPTION,
+                javax.swing.JOptionPane.QUESTION_MESSAGE,
+                null, opciones, opciones[0]);
+        return eleccion == 1 ? "javafx" : "java2d";
     }
 
     /**
@@ -141,14 +210,274 @@ public class J4F {
         return sb.toString();
     }
 
+    // ------------------------------------------------------------------
+    // Motor hibrido: JavaFX en un proceso aparte
+    // ------------------------------------------------------------------
+
+    /**
+     * Lanza el motor hibrido como proceso hijo y espera a que termine.
+     *
+     * Por que un proceso aparte y no una llamada directa: esta maquina
+     * virtual es Java 8 (es la que trae el proyecto, cero dependencias) y
+     * OpenJFX moderno no carga ahi ni con reflexion, revienta con
+     * UnsupportedClassVersionError en cuanto se toca la primera clase FX. La
+     * unica forma limpia de mezclar los dos motores en el mismo lanzador es
+     * que este, que sigue siendo Java 8 puro sin importar nada de javafx.*,
+     * busque un Java mas moderno instalado en la maquina y le entregue el
+     * trabajo.
+     *
+     * @return el codigo de salida del proceso hijo, para devolverlo tal cual.
+     */
+    private static int lanzarMotorHibrido(String[] argsOriginales) {
+        File clases = new File("build/classes");
+        File clasesFx = new File("build-fx");
+        File libFx = new File("lib-fx");
+        if (!clasesFx.isDirectory() || !hayJars(libFx)) {
+            error("El motor hibrido no esta preparado todavia.\n\n"
+                    + "Con un Java 11 o mas moderno instalado, una vez:\n\n"
+                    + "  \"<esa carpeta>\\bin\\java\" herramientas\\PrepararMotorFx.java\n\n"
+                    + "Descarga los jars de OpenJFX y compila build-fx/. Mientras tanto\n"
+                    + "el motor clasico sigue funcionando igual que siempre.");
+            return 1;
+        }
+
+        File javaBin = buscarJavaCompatible();
+        if (javaBin == null) {
+            error("El motor hibrido necesita un Java 11 o mas moderno instalado\n"
+                    + "aparte (OpenJFX moderno no arranca en Java 8, que es el que trae\n"
+                    + "este proyecto). No se ha encontrado ninguno en esta maquina.\n\n"
+                    + "Instala un JDK 17 o superior (por ejemplo Eclipse Temurin,\n"
+                    + "adoptium.net) o, si ya tienes uno en un sitio no habitual,\n"
+                    + "define la variable de entorno JAVAFX_JAVA_HOME apuntando a su\n"
+                    + "carpeta.\n\n"
+                    + "El motor clasico no necesita nada de esto y sigue funcionando.");
+            return 1;
+        }
+
+        StringBuilder cp = new StringBuilder();
+        cp.append(clases.getAbsolutePath()).append(File.pathSeparator);
+        cp.append(clasesFx.getAbsolutePath());
+        File[] jars = libFx.listFiles();
+        if (jars != null) {
+            for (int i = 0; i < jars.length; i++) {
+                if (jars[i].getName().toLowerCase().endsWith(".jar")) {
+                    cp.append(File.pathSeparator).append(jars[i].getAbsolutePath());
+                }
+            }
+        }
+
+        java.util.List<String> orden = new java.util.ArrayList<String>();
+        orden.add(javaBin.getAbsolutePath());
+        orden.add("-cp");
+        orden.add(cp.toString());
+        orden.add("j4f.fx.Lanzador");
+        // Se reenvian los argumentos utiles al motor hibrido (por ahora solo
+        // el genero: --motor ya esta decidido y --emision/--exclusiva son
+        // cosas del modo ventana de Swing que el hibrido todavia no replica).
+        for (int i = 0; i < argsOriginales.length; i++) {
+            String a = argsOriginales[i].toLowerCase();
+            if (a.equals("--genero") || a.equals("-g") || a.startsWith("--genero=")) {
+                orden.add(argsOriginales[i]);
+                if (!a.startsWith("--genero=") && i + 1 < argsOriginales.length) {
+                    orden.add(argsOriginales[++i]);
+                }
+            }
+        }
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(orden);
+            pb.inheritIO();
+            Process p = pb.start();
+            return p.waitFor();
+        } catch (Exception e) {
+            error("No se pudo arrancar el motor hibrido: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    private static boolean hayJars(File dir) {
+        File[] f = dir.listFiles();
+        if (f == null) {
+            return false;
+        }
+        for (int i = 0; i < f.length; i++) {
+            if (f[i].getName().toLowerCase().endsWith(".jar")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void error(String mensaje) {
+        System.err.println(mensaje);
+        try {
+            javax.swing.JOptionPane.showMessageDialog(null, mensaje,
+                    "Fireworks: motor hibrido", javax.swing.JOptionPane.ERROR_MESSAGE);
+        } catch (Exception ignorado) {
+            // Sin entorno grafico (por ejemplo, lanzado desde un script sin
+            // consola): el mensaje por stderr de arriba ya basta.
+        }
+    }
+
+    /**
+     * Busca un "java" de version 11 o superior instalado en la maquina.
+     *
+     * Orden: la variable JAVAFX_JAVA_HOME si esta puesta (para quien ya sabe
+     * donde tiene el suyo), JAVA_HOME si es lo bastante moderno, y despues
+     * las carpetas donde los principales distribuidores instalan un JDK en
+     * Windows por defecto. La version se lee del fichero "release" que trae
+     * todo JDK moderno, sin necesidad de arrancar un proceso solo para
+     * preguntarle su version.
+     */
+    private static File buscarJavaCompatible() {
+        String override = System.getenv("JAVAFX_JAVA_HOME");
+        if (override != null && override.length() > 0) {
+            File candidato = javaEnCarpeta(new File(override));
+            if (candidato != null) {
+                return candidato;
+            }
+        }
+        String javaHome = System.getenv("JAVA_HOME");
+        if (javaHome != null && javaHome.length() > 0) {
+            File candidato = javaCompatibleEnCarpeta(new File(javaHome));
+            if (candidato != null) {
+                return candidato;
+            }
+        }
+        String[] raices = {
+            "C:/Program Files/Eclipse Adoptium",
+            "C:/Program Files/Java",
+            "C:/Program Files/Microsoft",
+            "C:/Program Files/BellSoft",
+            "C:/Program Files/Zulu",
+            "C:/Program Files/RedHat",
+        };
+        File mejor = null;
+        int mejorVersion = 0;
+        for (int i = 0; i < raices.length; i++) {
+            File raiz = new File(raices[i]);
+            File[] hijos = raiz.listFiles();
+            if (hijos == null) {
+                continue;
+            }
+            for (int j = 0; j < hijos.length; j++) {
+                int v = versionDeCarpeta(hijos[j]);
+                if (v >= 11 && v > mejorVersion) {
+                    File candidato = javaEnCarpeta(hijos[j]);
+                    if (candidato != null) {
+                        mejor = candidato;
+                        mejorVersion = v;
+                    }
+                }
+            }
+        }
+        if (mejor != null) {
+            return mejor;
+        }
+        // Ultimo recurso: el JDK que trae el propio editor, si esta instalado
+        // con la extension de Java de VS Code. No es donde deberia vivir el
+        // Java de un usuario final, pero en una maquina de desarrollo suele
+        // ser el unico JDK moderno a mano, y evita un mensaje de error inutil.
+        File extensiones = new File(System.getProperty("user.home"),
+                ".vscode/extensions");
+        File[] ext = extensiones.listFiles();
+        if (ext != null) {
+            for (int i = 0; i < ext.length; i++) {
+                if (!ext[i].getName().startsWith("redhat.java-")) {
+                    continue;
+                }
+                File jreDir = new File(ext[i], "jre");
+                File[] jres = jreDir.listFiles();
+                if (jres == null) {
+                    continue;
+                }
+                for (int j = 0; j < jres.length; j++) {
+                    int v = versionDeCarpeta(jres[j]);
+                    File candidato = javaEnCarpeta(jres[j]);
+                    if (v >= 11 && candidato != null) {
+                        return candidato;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static File javaCompatibleEnCarpeta(File carpeta) {
+        return versionDeCarpeta(carpeta) >= 11 ? javaEnCarpeta(carpeta) : null;
+    }
+
+    /** @return el ejecutable de java dentro de esta carpeta de JDK, o null si no hay. */
+    private static File javaEnCarpeta(File carpeta) {
+        File exe = new File(carpeta, "bin/java.exe");
+        if (exe.isFile()) {
+            return exe;
+        }
+        File sh = new File(carpeta, "bin/java");
+        return sh.isFile() ? sh : null;
+    }
+
+    /**
+     * Version mayor de un JDK a partir de su fichero "release", o del nombre
+     * de la carpeta si ese fichero no esta.
+     */
+    private static int versionDeCarpeta(File carpeta) {
+        File release = new File(carpeta, "release");
+        if (release.isFile()) {
+            try {
+                java.util.Properties p = new java.util.Properties();
+                java.io.FileInputStream in = new java.io.FileInputStream(release);
+                try {
+                    p.load(in);
+                } finally {
+                    in.close();
+                }
+                String v = p.getProperty("JAVA_VERSION");
+                if (v != null) {
+                    int parseada = primerNumero(v.replace("\"", ""));
+                    if (parseada > 0) {
+                        // El formato viejo "1.8.0_502" cuenta como 8, no como 1.
+                        return parseada == 1 ? 8 : parseada;
+                    }
+                }
+            } catch (Exception ignorado) {
+                // Carpeta sin fichero de version legible: se sigue por el nombre.
+            }
+        }
+        return primerNumero(carpeta.getName());
+    }
+
+    /** Primer numero que aparece en la cadena, o 0 si no hay ninguno. */
+    private static int primerNumero(String s) {
+        int i = 0;
+        int n = s.length();
+        while (i < n && !Character.isDigit(s.charAt(i))) {
+            i++;
+        }
+        int j = i;
+        while (j < n && Character.isDigit(s.charAt(j))) {
+            j++;
+        }
+        if (j > i) {
+            try {
+                return Integer.parseInt(s.substring(i, j));
+            } catch (NumberFormatException ignorado) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
     private static void uso() {
         System.out.println("Fireworks");
         System.out.println("  --emision, -e      pantalla completa y escena limpia, para emitir");
         System.out.println("  --genero <nombre>  un solo genero, sin rotacion automatica");
         System.out.println("  --rotar            cambia de genero cada 9 minutos (por defecto)");
         System.out.println("  --exclusiva        pantalla completa exclusiva (OBS no la captura)");
+        System.out.println("  --motor <nombre>   java2d (por defecto) o javafx (hibrido, 3D)");
         System.out.println("  --ayuda, -h        esta ayuda");
         System.out.println("Generos: " + nombres());
+        System.out.println("Sin --motor se pregunta por pantalla, salvo en --emision (java2d).");
     }
 
     private static void construir() {
